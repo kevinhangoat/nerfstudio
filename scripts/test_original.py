@@ -81,10 +81,10 @@ def _render_rgb(
             camera_idx,
             False,
         )
-        cv2.imwrite(
-            f"{output_directory}/depth_{camera_idx}.png",
-            depth,
-        )
+        # cv2.imwrite(
+        #     f"{output_directory}/depth_{camera_idx}.png",
+        #     depth,
+        # )
         # pdb.set_trace()
 
 def plot_depth(

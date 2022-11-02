@@ -61,7 +61,7 @@ def colmap_to_json(cameras_path: Path, images_path: Path, output_dir: Path, came
         c2w = c2w[np.array([1, 0, 2, 3]), :]
         c2w[2, :] *= -1
 
-        name = Path(f"./images_8/{im_data.name}")
+        name = Path(f"./images/{im_data.name}")
 
         frame = {
             "file_path": str(name),
@@ -108,7 +108,7 @@ def colmap_to_json(cameras_path: Path, images_path: Path, output_dir: Path, came
     return len(frames)
 
 def main():
-    output_dir = Path("/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/bicycle")
+    output_dir = Path("/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/d389c316-c71f7a5e/")
     colmap_dir = output_dir
     camera_type = "other"
     camera_model = CAMERA_MODELS[camera_type]
