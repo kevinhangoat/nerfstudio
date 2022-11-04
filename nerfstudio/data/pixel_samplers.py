@@ -20,7 +20,7 @@ import random
 from typing import Dict
 
 import torch
-
+import pdb
 
 def collate_image_dataset_batch(batch: Dict, num_rays_per_batch: int, keep_full_image: bool = False):
     """
@@ -38,9 +38,14 @@ def collate_image_dataset_batch(batch: Dict, num_rays_per_batch: int, keep_full_
 
     # only sample within the mask, if the mask is in the batch
     if "mask" in batch:
-        nonzero_indices = torch.nonzero(batch["mask"][..., 0], as_tuple=False)
+        image_index = int(torch.floor((torch.rand(1)*num_images)))
+        nonzero_indices = torch.nonzero(batch["mask"][image_index,:,:, 0], as_tuple=False)
+        image_index_tensor = image_index * \
+            torch.ones(len(nonzero_indices),1, dtype=torch.int32, device=nonzero_indices.device)
+        nonzero_indices = torch.cat((image_index_tensor, nonzero_indices), 1)
         chosen_indices = random.sample(range(len(nonzero_indices)), k=num_rays_per_batch)
         indices = nonzero_indices[chosen_indices]
+        # pdb.set_trace()
     else:
         indices = torch.floor(
             torch.rand((num_rays_per_batch, 3), device=device)

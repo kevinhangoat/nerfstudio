@@ -35,11 +35,23 @@ from nerfstudio.data.dataparsers.base_dataparser import (
 )
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
-
+from nerfstudio.utils.misc import create_pan_mask_dict, get_transient_mask
+from typing import Dict, List
+import pdb
 console = Console()
 
 MAX_AUTO_RESOLUTION = 1600
 
+def get_mask(image_idx: int, masks: torch.Tensor):
+    """function to process additional semantics and mask information
+
+    Args:
+        image_idx: specific image index to work with
+        semantics: semantics data
+    """
+    # handle mask
+    mask = masks[image_idx]
+    return {"mask": mask}
 
 @dataclass
 class NerfstudioDataParserConfig(DataParserConfig):
@@ -75,8 +87,11 @@ class Nerfstudio(DataParser):
         image_filenames = []
         poses = []
         num_skipped_image_filenames = 0
-
-        for frame in meta["frames"]:
+        masks_all = []
+        pan_path = self.config.data / "pan_seg.json"
+        pan_seg_dict = create_pan_mask_dict(pan_path)
+        image_shape = (int(meta['h']), int(meta['w']))
+        for idx, frame in enumerate(meta["frames"]):
             if "\\" in frame["file_path"]:
                 filepath = PureWindowsPath(frame["file_path"])
             else:
@@ -87,6 +102,8 @@ class Nerfstudio(DataParser):
             else:
                 image_filenames.append(fname)
                 poses.append(np.array(frame["transform_matrix"]))
+            frame_mask = get_transient_mask(pan_seg_dict, filepath.name, image_shape)
+            masks_all.append(torch.from_numpy(frame_mask)[..., None])
         if num_skipped_image_filenames >= 0:
             logging.info("Skipping %s files in dataset split %s.", num_skipped_image_filenames, split)
         assert (
@@ -123,7 +140,8 @@ class Nerfstudio(DataParser):
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
         image_filenames = [image_filenames[i] for i in indices]
         poses = poses[indices]
-
+        masks_all = torch.stack(masks_all)
+        masks = masks_all[indices]
         # in x,y,z order
         # assumes that the scene is centered at the origin
         aabb_scale = self.config.scene_scale
@@ -166,7 +184,9 @@ class Nerfstudio(DataParser):
             image_filenames=image_filenames,
             cameras=cameras,
             scene_box=scene_box,
+            additional_inputs={"masks": {"func": get_mask, "kwargs": {"masks": masks}}},
         )
+        # pdb.set_trace()
         return dataparser_outputs
 
     def _get_fname(self, filepath):

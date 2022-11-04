@@ -25,7 +25,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchtyping import TensorType
-
+import pdb
 from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs
 
 
@@ -85,6 +85,9 @@ class InputDataset(Dataset):
             func = data_func_dict["func"]
             assert "kwargs" in data_func_dict, "No data to process: specify `kwargs` in `additional_inputs`"
             data.update(func(image_idx, **data_func_dict["kwargs"]))
+        # mask = func(image_idx, **data_func_dict["kwargs"])["mask"]
+        # torch.save({"image": image, "mask": mask}, "pair.pt")
+        # pdb.set_trace()
         return data
 
     def __getitem__(self, image_idx):

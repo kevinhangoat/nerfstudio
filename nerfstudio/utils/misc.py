@@ -19,7 +19,11 @@ Miscellaneous helper code.
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-
+from pathlib import Path
+import json
+import numpy as np
+from scalabel.label.transforms import rle_to_mask
+import pdb
 
 def get_dict_to_torch(stuff: Any, device: Union[torch.device, str] = "cpu", exclude: Optional[List[str]] = None):
     """Set everything in the dict to the specified torch device.
@@ -147,3 +151,51 @@ def update_avg(prev_avg: float, new_val: float, step: int) -> float:
         float: new updated average
     """
     return (step * prev_avg + new_val) / (step + 1)
+
+def create_pan_mask_dict(pan_json_path: Path) -> Dict[str, np.array]:
+    if not pan_json_path.is_file():
+        return None
+    with open(pan_json_path, "rb") as fp:
+        fp_content = json.load(fp)
+    frames = fp_content["frames"]
+    result = dict()
+    for frame in frames:
+        img_name = frame['name']
+        labels = frame["labels"]
+        pan_dict = {
+            "person":[], "rider":[], "bicycle":[], "bus":[], "car":[], 
+            "caravan":[], "motorcycle":[], "trailer":[], "train":[], 
+            "truck":[], "dynamic":[], "ego vehicle":[], "ground":[], 
+            "static":[], "parking":[], "rail track":[], "road":[], 
+            "sidewalk":[], "bridge":[], "building":[], "fence":[], 
+            "garage":[], "guard rail":[], "tunnel":[], "wall":[], 
+            "banner":[], "billboard":[], "lane divider":[], 
+            "parking sign":[], "pole":[], "polegroup":[], "street light":[], 
+            "traffic cone":[], "traffic device":[], "traffic light":[], 
+            "traffic sign":[], "traffic sign frame":[], "terrain":[], 
+            "vegetation":[], "sky":[], "unlabeled":[]
+        }
+        result[img_name] = pan_dict
+        for label in labels:
+            result[img_name][label["category"]].append(rle_to_mask(label["rle"]))
+    return result
+
+
+def get_transient_mask(pan_seg_dict, image_name, shape):
+    """
+    Create transient mask that contains transient objects(car, bike so on) and ego vehicle
+    """
+    mask = np.zeros(shape)
+    if not pan_seg_dict:
+        # If no panoptic masks are found, return matrix of ones
+        return 1- mask
+    if len(pan_seg_dict[image_name]['ego vehicle']) != 0:
+        mask += pan_seg_dict[image_name]['ego vehicle'][0]
+    if len(pan_seg_dict[image_name]['unlabeled']) != 0:
+        mask += pan_seg_dict[image_name]['unlabeled'][0]
+    transient_instances = pan_seg_dict[image_name]['car'] + pan_seg_dict[image_name]['bus'] + pan_seg_dict[image_name]['truck'] + \
+                          pan_seg_dict[image_name]['person'] + pan_seg_dict[image_name]['rider'] + pan_seg_dict[image_name]['bicycle']
+    if len(transient_instances)!=0:    
+        for instance_mask in transient_instances:
+            mask += instance_mask 
+    return 1-mask

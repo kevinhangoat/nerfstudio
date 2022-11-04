@@ -29,7 +29,7 @@ from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.data.utils.datasets import InputDataset
 from nerfstudio.utils.misc import get_dict_to_torch
-
+import pdb
 
 class CacheDataloader(DataLoader):
     """Collated image dataset that implements caching of default-pytorch-collatable data.
@@ -80,6 +80,7 @@ class CacheDataloader(DataLoader):
         batch_list = self._get_batch_list()
         collated_batch = default_collate(batch_list)
         collated_batch = get_dict_to_torch(collated_batch, device=self.device, exclude=["image"])
+        # pdb.set_trace()
         return collated_batch
 
     def __iter__(self):

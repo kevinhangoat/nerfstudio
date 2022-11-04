@@ -108,13 +108,13 @@ def colmap_to_json(cameras_path: Path, images_path: Path, output_dir: Path, came
     return len(frames)
 
 def main():
-    output_dir = Path("/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/d389c316-c71f7a5e/")
+    output_dir = Path("/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/10001_52_new")
     colmap_dir = output_dir
     camera_type = "other"
     camera_model = CAMERA_MODELS[camera_type]
     num_matched_frames = colmap_to_json(
-        cameras_path=colmap_dir / "sparse" / "0" / "cameras.bin",
-        images_path=colmap_dir / "sparse" / "0" / "images.bin",
+        cameras_path=colmap_dir / "sparse" / "cameras.bin",
+        images_path=colmap_dir / "sparse" / "images.bin",
         output_dir=output_dir,
         camera_model=camera_model,
     )

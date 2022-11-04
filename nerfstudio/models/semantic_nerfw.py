@@ -52,7 +52,7 @@ from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.models.base_model import Model
 from nerfstudio.models.nerfacto import NerfactoModelConfig
 from nerfstudio.utils import colormaps
-
+import pdb
 
 @dataclass
 class SemanticNerfWModelConfig(NerfactoModelConfig):
