@@ -33,7 +33,7 @@ from nerfstudio.data.dataparsers.base_dataparser import (
 )
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
-
+import pdb
 CONSOLE = Console()
 
 
@@ -194,4 +194,5 @@ class Friends(DataParser):
             additional_inputs={"semantics": {"func": get_semantics_and_masks, "kwargs": {"semantics": semantics}}},
             semantics=semantics,
         )
+        pdb.set_trace()
         return dataparser_outputs

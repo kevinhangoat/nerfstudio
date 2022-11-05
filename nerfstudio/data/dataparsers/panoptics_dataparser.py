@@ -11,14 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Data parser for nerfstudio datasets. """
 
+"""Data parser for Panoptics dataset"""
 from __future__ import annotations
 
 import logging
 import math
 from dataclasses import dataclass, field
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 from typing import Literal, Optional, Type
 
 import numpy as np
@@ -27,22 +27,21 @@ from PIL import Image
 from rich.console import Console
 
 from nerfstudio.cameras import camera_utils
-from nerfstudio.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras, CameraType
+from nerfstudio.cameras.cameras import Cameras, CameraType
 from nerfstudio.data.dataparsers.base_dataparser import (
     DataParser,
     DataParserConfig,
     DataparserOutputs,
+    Semantics,
 )
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
-from nerfstudio.utils.misc import create_pan_mask_dict, get_transient_mask
-from typing import Dict, List
 import pdb
 console = Console()
 
 MAX_AUTO_RESOLUTION = 1600
 
-def get_mask(image_idx: int, masks: torch.Tensor):
+def get_semantics_and_masks(image_idx: int, semantics: Semantics):
     """function to process additional semantics and mask information
 
     Args:
@@ -50,47 +49,77 @@ def get_mask(image_idx: int, masks: torch.Tensor):
         semantics: semantics data
     """
     # handle mask
-    mask = masks[image_idx]
-    return {"mask": mask}
+    car_index = semantics.thing_classes.index("car")
+    truck_index = semantics.thing_classes.index("truck")
+    bus_index = semantics.thing_classes.index("bus")
+    person_index = semantics.thing_classes.index("person")
+
+    thing_image_filename = semantics.thing_filenames[image_idx]
+    pil_image = Image.open(thing_image_filename)
+    thing_semantics = torch.from_numpy(np.array(pil_image, dtype="int32"))[..., None]
+    car_mask = (thing_semantics != car_index).to(torch.float32)  # 1 where valid
+    truck_mask = (thing_semantics != truck_index).to(torch.float32)
+    bus_mask = (thing_semantics != bus_index).to(torch.float32)
+    mask = (thing_semantics != person_index).to(torch.float32)
+    # mask = torch.logical_and(torch.logical_and(car_mask, truck_mask), bus_mask)
+    # handle semantics
+    # stuff
+    stuff_image_filename = semantics.stuff_filenames[image_idx]
+    pil_image = Image.open(stuff_image_filename)
+    stuff_semantics = torch.from_numpy(np.array(pil_image, dtype="int32"))[..., None]
+    # thing
+    thing_image_filename = semantics.thing_filenames[image_idx]
+    pil_image = Image.open(thing_image_filename)
+    thing_semantics = torch.from_numpy(np.array(pil_image, dtype="int32"))[..., None]
+    return {"mask": mask, "semantics_stuff": stuff_semantics, "semantics_thing": thing_semantics}
+
 
 @dataclass
-class NerfstudioDataParserConfig(DataParserConfig):
-    """Nerfstudio dataset config"""
+class PanopticsDataParserConfig(DataParserConfig):
+    """Panoptics dataset parser config"""
 
-    _target: Type = field(default_factory=lambda: Nerfstudio)
+    _target: Type = field(default_factory=lambda: Panoptics)
     """target class to instantiate"""
-    data: Path = Path("data/nerfstudio/poster")
+    data: Path = Path("data/friends/TBBT-big_living_room")
     """Directory specifying location of data."""
-    scale_factor: float = 1.0
-    """How much to scale the camera origins by."""
+    include_semantics: bool = True
+    """whether or not to include loading of semantics data"""
     downscale_factor: Optional[int] = None
     """How much to downscale images. If not set, images are chosen such that the max dimension is <1600px."""
     scene_scale: float = 1.0
     """How much to scale the region of interest by."""
+    scale_factor: float = 1.0
+    """How much to scale the camera origins by."""
     orientation_method: Literal["pca", "up"] = "up"
     """The method to use for orientation."""
     train_split_percentage: float = 0.9
     """The percent of images to use for training. The remaining images are for eval."""
-    use_transient_mask: bool = False
-    """Whether to mask out transient objects"""
+
+    """
+    Sets the bounding cube to have edge length of this size.
+    The longest dimension of the Panoptics axis-aligned bbox will be scaled to this value.
+    """
+
 
 @dataclass
-class Nerfstudio(DataParser):
-    """Nerfstudio DatasetParser"""
+class Panoptics(DataParser):
+    """Panoptics Dataset"""
 
-    config: NerfstudioDataParserConfig
+    config: PanopticsDataParserConfig
     downscale_factor: Optional[int] = None
 
-    def _generate_dataparser_outputs(self, split="train"):
-        # pylint: disable=too-many-statements
+    def _generate_dataparser_outputs(self, split="train"):  # pylint: disable=unused-argument,too-many-statements
 
         meta = load_from_json(self.config.data / "transforms.json")
         image_filenames = []
         poses = []
+
+        images_folder = f"images"
+        segmentations_folder = f"segmentations"
+
         num_skipped_image_filenames = 0
-        masks_all = []
         pan_path = self.config.data / "pan_seg.json"
-        pan_seg_dict = create_pan_mask_dict(pan_path)
+        # pan_seg_dict = create_pan_mask_dict(pan_path)
         image_shape = (int(meta['h']), int(meta['w']))
         for idx, frame in enumerate(meta["frames"]):
             if "\\" in frame["file_path"]:
@@ -103,8 +132,8 @@ class Nerfstudio(DataParser):
             else:
                 image_filenames.append(fname)
                 poses.append(np.array(frame["transform_matrix"]))
-            frame_mask = get_transient_mask(pan_seg_dict, filepath.name, image_shape)
-            masks_all.append(torch.from_numpy(frame_mask)[..., None])
+            # frame_mask = get_transient_mask(pan_seg_dict, filepath.name, image_shape)
+            # masks_all.append(torch.from_numpy(frame_mask)[..., None])
         if num_skipped_image_filenames >= 0:
             logging.info("Skipping %s files in dataset split %s.", num_skipped_image_filenames, split)
         assert (
@@ -141,8 +170,8 @@ class Nerfstudio(DataParser):
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
         image_filenames = [image_filenames[i] for i in indices]
         poses = poses[indices]
-        masks_all = torch.stack(masks_all)
-        masks = masks_all[indices]
+        # masks_all = torch.stack(masks_all)
+        # masks = masks_all[indices]
         # in x,y,z order
         # assumes that the scene is centered at the origin
         aabb_scale = self.config.scene_scale
@@ -151,6 +180,39 @@ class Nerfstudio(DataParser):
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
             )
         )
+
+        # --- semantics ---
+        semantics = None
+        if self.config.include_semantics:
+            thing_filenames = [
+                Path(
+                    str(image_filename)
+                    .replace(f"/{images_folder}/", f"/{segmentations_folder}/thing/")
+                    .replace(".jpg", ".png")
+                )
+                for image_filename in image_filenames
+            ]
+            stuff_filenames = [
+                Path(
+                    str(image_filename)
+                    .replace(f"/{images_folder}/", f"/{segmentations_folder}/stuff/")
+                    .replace(".jpg", ".png")
+                )
+                for image_filename in image_filenames
+            ]
+            panoptic_classes = load_from_json(self.config.data / "panoptic_classes.json")
+            stuff_classes = panoptic_classes["stuff"]
+            stuff_colors = torch.tensor(panoptic_classes["stuff_colors"], dtype=torch.float32) / 255.0
+            thing_classes = panoptic_classes["thing"]
+            thing_colors = torch.tensor(panoptic_classes["thing_colors"], dtype=torch.float32) / 255.0
+            semantics = Semantics(
+                stuff_classes=stuff_classes,
+                stuff_colors=stuff_colors,
+                stuff_filenames=stuff_filenames,
+                thing_classes=thing_classes,
+                thing_colors=thing_colors,
+                thing_filenames=thing_filenames,
+            )
 
         if "camera_model" in meta:
             camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
@@ -180,19 +242,13 @@ class Nerfstudio(DataParser):
 
         assert self.downscale_factor is not None
         cameras.rescale_output_resolution(scaling_factor=1.0 / self.downscale_factor)
-
-        if self.config.use_transient_mask:
-            addition_inputs = {"masks": {"func": get_mask, "kwargs": {"masks": masks}}}
-        else: 
-            addition_inputs = {}
-
         dataparser_outputs = DataparserOutputs(
             image_filenames=image_filenames,
             cameras=cameras,
             scene_box=scene_box,
-            additional_inputs=addition_inputs,
+            additional_inputs={"semantics": {"func": get_semantics_and_masks, "kwargs": {"semantics": semantics}}},
+            semantics=semantics,
         )
-        # pdb.set_trace()
         return dataparser_outputs
 
     def _get_fname(self, filepath):
