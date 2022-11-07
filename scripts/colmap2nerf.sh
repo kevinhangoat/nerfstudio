@@ -40,4 +40,10 @@ python scripts/colmap2nerf.py \
     --aabb_scale 16 \
     --colmap_text /srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/e55efa65-7314c32b/sparse \
     --out /srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/e55efa65-7314c32b
+
+python scripts/colmap2nerf.py \
+    --images /srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/d389c316-c71f7a5e/images \
+    --aabb_scale 16 \
+    --colmap_text /srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/d389c316-c71f7a5e/sparse \
+    --out /srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/d389c316-c71f7a5e
     

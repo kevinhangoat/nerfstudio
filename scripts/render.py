@@ -6,10 +6,9 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import logging
 import sys
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 import mediapy as media
 import torch
@@ -22,7 +21,7 @@ from rich.progress import (
     TextColumn,
     TimeRemainingColumn,
 )
-from typing_extensions import assert_never
+from typing_extensions import Literal, assert_never
 
 from nerfstudio.cameras.camera_paths import get_path_from_json, get_spiral_path
 from nerfstudio.cameras.cameras import Cameras
@@ -32,9 +31,7 @@ from nerfstudio.utils import install_checks
 from nerfstudio.utils.eval_utils import eval_setup
 from nerfstudio.utils.rich_utils import ItersPerSecColumn
 
-console = Console(width=120)
-
-logging.basicConfig(format="[%(filename)s:%(lineno)d] %(message)s", level=logging.INFO)
+CONSOLE = Console(width=120)
 
 
 def _render_trajectory_video(
@@ -44,6 +41,7 @@ def _render_trajectory_video(
     rendered_output_name: str,
     rendered_resolution_scaling_factor: float = 1.0,
     seconds: float = 5.0,
+    output_format: Literal["images", "video"] = "video",
 ) -> None:
     """Helper function to create a video of the spiral trajectory.
 
@@ -53,9 +51,10 @@ def _render_trajectory_video(
         output_filename: Name of the output file.
         rendered_output_name: Name of the renderer output to use.
         rendered_resolution_scaling_factor: Scaling factor to apply to the camera image resolution.
-        seconds: Number for the output video.
+        seconds: Length of output video.
+        output_format: How to save output data.
     """
-    console.print("[bold green]Creating trajectory video")
+    CONSOLE.print("[bold green]Creating trajectory video")
     images = []
     cameras.rescale_output_resolution(rendered_resolution_scaling_factor)
 
@@ -66,26 +65,33 @@ def _render_trajectory_video(
         ItersPerSecColumn(suffix="fps"),
         TimeRemainingColumn(elapsed_when_finished=True, compact=True),
     )
+    output_image_dir = output_filename.parent / output_filename.stem
+    if output_format == "images":
+        output_image_dir.mkdir(parents=True, exist_ok=True)
     with progress:
         for camera_idx in progress.track(range(cameras.size), description=""):
             camera_ray_bundle = cameras.generate_rays(camera_indices=camera_idx).to(pipeline.device)
             with torch.no_grad():
                 outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
             if rendered_output_name not in outputs:
-                console.rule("Error", style="red")
-                console.print(f"Could not find {rendered_output_name} in the model outputs", justify="center")
-                console.print(f"Please set --rendered_output_name to one of: {outputs.keys()}", justify="center")
+                CONSOLE.rule("Error", style="red")
+                CONSOLE.print(f"Could not find {rendered_output_name} in the model outputs", justify="center")
+                CONSOLE.print(f"Please set --rendered_output_name to one of: {outputs.keys()}", justify="center")
                 sys.exit(1)
             image = outputs[rendered_output_name].cpu().numpy()
-            images.append(image)
+            if output_format == "images":
+                media.write_image(output_image_dir / f"{camera_idx:05d}.png", image)
+            else:
+                images.append(image)
 
-    fps = len(images) / seconds
-    # make the folder if it doesn't exist
-    output_filename.parent.mkdir(parents=True, exist_ok=True)
-    with console.status("[yellow]Saving video", spinner="bouncingBall"):
-        media.write_video(output_filename, images, fps=fps)
-    console.rule("[green] :tada: :tada: :tada: Success :tada: :tada: :tada:")
-    console.print(f"[green]Saved video to {output_filename}", justify="center")
+    if output_format == "video":
+        fps = len(images) / seconds
+        # make the folder if it doesn't exist
+        output_filename.parent.mkdir(parents=True, exist_ok=True)
+        with CONSOLE.status("[yellow]Saving video", spinner="bouncingBall"):
+            media.write_video(output_filename, images, fps=fps)
+    CONSOLE.rule("[green] :tada: :tada: :tada: Success :tada: :tada: :tada:")
+    CONSOLE.print(f"[green]Saved video to {output_filename}", justify="center")
 
 
 @dataclasses.dataclass
@@ -106,6 +112,8 @@ class RenderTrajectory:
     output_path: Path = Path("renders/output.mp4")
     # How long the video should be.
     seconds: float = 5.0
+    # How to save output data.
+    output_format: Literal["images", "video"] = "video"
     # Specifies number of rays per chunk during eval.
     eval_num_rays_per_chunk: Optional[int] = None
 
@@ -145,6 +153,7 @@ class RenderTrajectory:
             rendered_output_name=self.rendered_output_name,
             rendered_resolution_scaling_factor=1.0 / self.downscale_factor,
             seconds=seconds,
+            output_format=self.output_format,
         )
 
 

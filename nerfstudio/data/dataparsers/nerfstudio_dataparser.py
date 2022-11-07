@@ -15,16 +15,16 @@
 
 from __future__ import annotations
 
-import logging
 import math
 from dataclasses import dataclass, field
-from pathlib import Path, PureWindowsPath
-from typing import Literal, Optional, Type
+from pathlib import Path, PurePath
+from typing import Optional, Type
 
 import numpy as np
 import torch
 from PIL import Image
 from rich.console import Console
+from typing_extensions import Literal
 
 from nerfstudio.cameras import camera_utils
 from nerfstudio.cameras.cameras import CAMERA_MODEL_TO_TYPE, Cameras, CameraType
@@ -38,31 +38,8 @@ from nerfstudio.utils.io import load_from_json
 from nerfstudio.utils.misc import create_pan_mask_dict, get_transient_mask
 from typing import Dict, List
 import pdb
-console = Console()
-
+CONSOLE = Console(width=120)
 MAX_AUTO_RESOLUTION = 1600
-
-def get_mask(image_idx: int, masks: torch.Tensor):
-    """function to process additional semantics and mask information
-
-    Args:
-        image_idx: specific image index to work with
-        semantics: semantics data
-    """
-    # handle mask
-    mask = masks[image_idx]
-    return {"mask": mask}
-
-def get_depth(image_idx: int, depths: torch.Tensor):
-    """function to process additional semantics and mask information
-
-    Args:
-        image_idx: specific image index to work with
-        semantics: semantics data
-    """
-    # handle mask
-    depth = depths[image_idx]
-    return {"depth": depth}
 
 def path_replace(path_name: Path, old: str, new: str):
     parent, file_name = path_name.parent, path_name.name
@@ -83,8 +60,12 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """How much to downscale images. If not set, images are chosen such that the max dimension is <1600px."""
     scene_scale: float = 1.0
     """How much to scale the region of interest by."""
-    orientation_method: Literal["pca", "up"] = "up"
+    orientation_method: Literal["pca", "up", "none"] = "up"
     """The method to use for orientation."""
+    center_poses: bool = True
+    """Whether to center the poses."""
+    auto_scale_poses: bool = True
+    """Whether to automatically scale the poses to fit in +/- 1 bounding box."""
     train_split_percentage: float = 0.9
     """The percent of images to use for training. The remaining images are for eval."""
     use_transient_mask: bool = False
@@ -113,12 +94,9 @@ class Nerfstudio(DataParser):
         depth_path = self.config.data / "depth_prior"
         image_shape = (int(meta['h']), int(meta['w']))
         for idx, frame in enumerate(meta["frames"]):
-            if "\\" in frame["file_path"]:
-                filepath = PureWindowsPath(frame["file_path"])
-            else:
-                filepath = Path(frame["file_path"])
+            filepath = PurePath(frame["file_path"])
             fname = self._get_fname(filepath)
-            if not fname:
+            if not fname.exists():
                 num_skipped_image_filenames += 1
             else:
                 image_filenames.append(fname)
@@ -132,7 +110,7 @@ class Nerfstudio(DataParser):
             masks_all.append(torch.from_numpy(frame_mask)[..., None])
 
         if num_skipped_image_filenames >= 0:
-            logging.info("Skipping %s files in dataset split %s.", num_skipped_image_filenames, split)
+            CONSOLE.log(f"Skipping {num_skipped_image_filenames} files in dataset split {split}.")
         assert (
             len(image_filenames) != 0
         ), """
@@ -158,10 +136,15 @@ class Nerfstudio(DataParser):
             raise ValueError(f"Unknown dataparser split {split}")
 
         poses = torch.from_numpy(np.array(poses).astype(np.float32))
-        poses = camera_utils.auto_orient_poses(poses, method=self.config.orientation_method)
+        poses = camera_utils.auto_orient_and_center_poses(
+            poses, method=self.config.orientation_method, center_poses=self.config.center_poses
+        )
 
         # Scale poses
-        scale_factor = 1.0 / torch.max(torch.abs(poses[:, :3, 3]))
+        scale_factor = 1.0
+        if self.config.auto_scale_poses:
+            scale_factor /= torch.max(torch.abs(poses[:, :3, 3]))
+
         poses[:, :3, 3] *= scale_factor * self.config.scale_factor
 
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
@@ -211,25 +194,24 @@ class Nerfstudio(DataParser):
         cameras.rescale_output_resolution(scaling_factor=1.0 / self.downscale_factor)
 
         if self.config.use_transient_mask:
-            addition_inputs = {"masks": {"func": get_mask, "kwargs": {"masks": masks}}}
+            addition_inputs = {"masks": masks}
         elif self.config.use_depth_supervised:
             addition_inputs = {
-                "depths": {"func": get_depth, "kwargs": {"depths": depths}},
-                "masks": {"func": get_mask, "kwargs": {"masks": masks}}
+                "depths": depths,
+                "masks": masks,
             }
         else: 
             addition_inputs = {}
-
+            
         dataparser_outputs = DataparserOutputs(
             image_filenames=image_filenames,
             cameras=cameras,
             scene_box=scene_box,
-            additional_inputs=addition_inputs,
+            metadata=addition_inputs,
         )
-        # pdb.set_trace()
         return dataparser_outputs
 
-    def _get_fname(self, filepath):
+    def _get_fname(self, filepath: PurePath) -> Path:
         """Get the filename of the image file."""
 
         if self.downscale_factor is None:
@@ -245,8 +227,8 @@ class Nerfstudio(DataParser):
                         break
                     df += 1
 
-                console.print(f"Auto image downscale factor of {2**df}")
                 self.downscale_factor = 2**df
+                CONSOLE.log(f"Auto image downscale factor of {self.downscale_factor}")
             else:
                 self.downscale_factor = self.config.downscale_factor
 

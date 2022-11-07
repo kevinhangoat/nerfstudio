@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Data parser for Panoptics dataset"""
+"""Data parser for panoptic dataset"""
 from __future__ import annotations
 
 import logging
@@ -20,12 +20,9 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional, Type
-
 import numpy as np
 import torch
-from PIL import Image
 from rich.console import Console
-
 from nerfstudio.cameras import camera_utils
 from nerfstudio.cameras.cameras import Cameras, CameraType
 from nerfstudio.data.dataparsers.base_dataparser import (
@@ -37,41 +34,7 @@ from nerfstudio.data.dataparsers.base_dataparser import (
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
 import pdb
-console = Console()
-
-MAX_AUTO_RESOLUTION = 1600
-
-def get_semantics_and_masks(image_idx: int, semantics: Semantics):
-    """function to process additional semantics and mask information
-
-    Args:
-        image_idx: specific image index to work with
-        semantics: semantics data
-    """
-    # handle mask
-    car_index = semantics.thing_classes.index("car")
-    truck_index = semantics.thing_classes.index("truck")
-    bus_index = semantics.thing_classes.index("bus")
-    person_index = semantics.thing_classes.index("person")
-
-    thing_image_filename = semantics.thing_filenames[image_idx]
-    pil_image = Image.open(thing_image_filename)
-    thing_semantics = torch.from_numpy(np.array(pil_image, dtype="int32"))[..., None]
-    car_mask = (thing_semantics != car_index).to(torch.float32)  # 1 where valid
-    truck_mask = (thing_semantics != truck_index).to(torch.float32)
-    bus_mask = (thing_semantics != bus_index).to(torch.float32)
-    mask = (thing_semantics != person_index).to(torch.float32)
-    # mask = torch.logical_and(torch.logical_and(car_mask, truck_mask), bus_mask)
-    # handle semantics
-    # stuff
-    stuff_image_filename = semantics.stuff_filenames[image_idx]
-    pil_image = Image.open(stuff_image_filename)
-    stuff_semantics = torch.from_numpy(np.array(pil_image, dtype="int32"))[..., None]
-    # thing
-    thing_image_filename = semantics.thing_filenames[image_idx]
-    pil_image = Image.open(thing_image_filename)
-    thing_semantics = torch.from_numpy(np.array(pil_image, dtype="int32"))[..., None]
-    return {"mask": mask, "semantics_stuff": stuff_semantics, "semantics_thing": thing_semantics}
+CONSOLE = Console()
 
 
 @dataclass
@@ -82,34 +45,34 @@ class PanopticsDataParserConfig(DataParserConfig):
     """target class to instantiate"""
     data: Path = Path("data/friends/TBBT-big_living_room")
     """Directory specifying location of data."""
-    include_semantics: bool = True
-    """whether or not to include loading of semantics data"""
-    downscale_factor: Optional[int] = None
-    """How much to downscale images. If not set, images are chosen such that the max dimension is <1600px."""
-    scene_scale: float = 1.0
-    """How much to scale the region of interest by."""
     scale_factor: float = 1.0
     """How much to scale the camera origins by."""
+    include_semantics: bool = True
+    """whether or not to include loading of semantics data"""
     orientation_method: Literal["pca", "up"] = "up"
     """The method to use for orientation."""
-    train_split_percentage: float = 0.9
-    """The percent of images to use for training. The remaining images are for eval."""
-
+    center_poses: bool = True
+    """Whether to center the poses."""
+    downscale_factor: int = 1
+    scene_scale: float = 2.0
     """
     Sets the bounding cube to have edge length of this size.
-    The longest dimension of the Panoptics axis-aligned bbox will be scaled to this value.
+    The longest dimension of the Friends axis-aligned bbox will be scaled to this value.
     """
+    train_split_percentage: float = 0.9
+    """The percent of images to use for training. The remaining images are for eval."""
+    scene_scale: float = 1.0
+    """How much to scale the region of interest by."""
+    
 
 
 @dataclass
 class Panoptics(DataParser):
     """Panoptics Dataset"""
-
     config: PanopticsDataParserConfig
     downscale_factor: Optional[int] = None
 
     def _generate_dataparser_outputs(self, split="train"):  # pylint: disable=unused-argument,too-many-statements
-
         meta = load_from_json(self.config.data / "transforms.json")
         image_filenames = []
         poses = []
@@ -161,8 +124,9 @@ class Panoptics(DataParser):
             raise ValueError(f"Unknown dataparser split {split}")
 
         poses = torch.from_numpy(np.array(poses).astype(np.float32))
-        poses = camera_utils.auto_orient_poses(poses, method=self.config.orientation_method)
-
+        poses = camera_utils.auto_orient_and_center_poses(
+            poses, method=self.config.orientation_method, center_poses=self.config.center_poses
+        )
         # Scale poses
         scale_factor = 1.0 / torch.max(torch.abs(poses[:, :3, 3]))
         poses[:, :3, 3] *= scale_factor * self.config.scale_factor
@@ -180,11 +144,9 @@ class Panoptics(DataParser):
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
             )
         )
-
         # --- semantics ---
-        semantics = None
         if self.config.include_semantics:
-            thing_filenames = [
+            filenames = [
                 Path(
                     str(image_filename)
                     .replace(f"/{images_folder}/", f"/{segmentations_folder}/thing/")
@@ -192,28 +154,11 @@ class Panoptics(DataParser):
                 )
                 for image_filename in image_filenames
             ]
-            stuff_filenames = [
-                Path(
-                    str(image_filename)
-                    .replace(f"/{images_folder}/", f"/{segmentations_folder}/stuff/")
-                    .replace(".jpg", ".png")
-                )
-                for image_filename in image_filenames
-            ]
             panoptic_classes = load_from_json(self.config.data / "panoptic_classes.json")
-            stuff_classes = panoptic_classes["stuff"]
-            stuff_colors = torch.tensor(panoptic_classes["stuff_colors"], dtype=torch.float32) / 255.0
-            thing_classes = panoptic_classes["thing"]
-            thing_colors = torch.tensor(panoptic_classes["thing_colors"], dtype=torch.float32) / 255.0
-            semantics = Semantics(
-                stuff_classes=stuff_classes,
-                stuff_colors=stuff_colors,
-                stuff_filenames=stuff_filenames,
-                thing_classes=thing_classes,
-                thing_colors=thing_colors,
-                thing_filenames=thing_filenames,
-            )
-
+            classes = panoptic_classes["thing"]
+            colors = torch.tensor(panoptic_classes["thing_colors"], dtype=torch.float32) / 255.0
+            semantics = Semantics(filenames=filenames, classes=classes, colors=colors, mask_classes=["truck"])
+        
         if "camera_model" in meta:
             camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
         else:
@@ -241,16 +186,17 @@ class Panoptics(DataParser):
         )
 
         assert self.downscale_factor is not None
-        cameras.rescale_output_resolution(scaling_factor=1.0 / self.downscale_factor)
+        cameras.rescale_output_resolution(scaling_factor=1.0 / self.config.downscale_factor)
+
         dataparser_outputs = DataparserOutputs(
             image_filenames=image_filenames,
             cameras=cameras,
             scene_box=scene_box,
-            additional_inputs={"semantics": {"func": get_semantics_and_masks, "kwargs": {"semantics": semantics}}},
-            semantics=semantics,
+            metadata={"semantics": semantics} if self.config.include_semantics else {},
         )
+        # pdb.set_trace()
         return dataparser_outputs
-
+    
     def _get_fname(self, filepath):
         """Get the filename of the image file."""
 

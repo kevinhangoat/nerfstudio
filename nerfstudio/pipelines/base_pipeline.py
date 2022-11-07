@@ -37,7 +37,7 @@ from torch.nn import Parameter
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from nerfstudio.configs import base_config as cfg
-from nerfstudio.data.datamanagers import (
+from nerfstudio.data.datamanagers.base_datamanager import (
     DataManager,
     VanillaDataManager,
     VanillaDataManagerConfig,
@@ -220,16 +220,13 @@ class VanillaPipeline(Pipeline):
         self._model = config.model.setup(
             scene_box=self.datamanager.train_dataset.dataparser_outputs.scene_box,
             num_train_data=len(self.datamanager.train_dataset),
-            semantics=self.datamanager.train_dataset.dataparser_outputs.semantics,
-            device=device,
+            metadata=self.datamanager.train_dataset.dataparser_outputs.metadata,
         )
         self.model.to(device)
 
         self.world_size = world_size
         if world_size > 1:
-            self._model = typing.cast(
-                Model, typing.cast(Model, DDP(self._model, device_ids=[local_rank], find_unused_parameters=True))
-            )
+            self._model = typing.cast(Model, DDP(self._model, device_ids=[local_rank], find_unused_parameters=True))
             dist.barrier(device_ids=[local_rank])
 
     @property

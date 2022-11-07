@@ -85,7 +85,7 @@ def _render_rgb(
         #     f"{output_directory}/depth_{camera_idx}.png",
         #     depth,
         # )
-        pdb.set_trace()
+        # pdb.set_trace()
 
 def plot_depth(
     depth_map: np.ndarray,
