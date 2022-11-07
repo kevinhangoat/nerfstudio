@@ -191,11 +191,11 @@ def get_transient_mask(pan_seg_dict, image_name, shape):
         return 1- mask
     if len(pan_seg_dict[image_name]['ego vehicle']) != 0:
         mask += pan_seg_dict[image_name]['ego vehicle'][0]
-    if len(pan_seg_dict[image_name]['unlabeled']) != 0:
-        mask += pan_seg_dict[image_name]['unlabeled'][0]
-    transient_instances = pan_seg_dict[image_name]['car'] + pan_seg_dict[image_name]['bus'] + pan_seg_dict[image_name]['truck'] + \
-                          pan_seg_dict[image_name]['person'] + pan_seg_dict[image_name]['rider'] + pan_seg_dict[image_name]['bicycle']
-    if len(transient_instances)!=0:    
-        for instance_mask in transient_instances:
-            mask += instance_mask 
+    # if len(pan_seg_dict[image_name]['unlabeled']) != 0:
+    #     mask += pan_seg_dict[image_name]['unlabeled'][0]
+    # transient_instances = pan_seg_dict[image_name]['car'] + pan_seg_dict[image_name]['bus'] + pan_seg_dict[image_name]['truck'] + \
+    #                       pan_seg_dict[image_name]['person'] + pan_seg_dict[image_name]['rider'] + pan_seg_dict[image_name]['bicycle']
+    # if len(transient_instances)!=0:    
+    #     for instance_mask in transient_instances:
+    #         mask += instance_mask 
     return 1-mask

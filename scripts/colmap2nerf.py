@@ -179,7 +179,7 @@ if __name__ == "__main__":
     SKIP_EARLY = int(args.skip_early)
     TEXT_FOLDER = args.colmap_text
     binary_to_txt(TEXT_FOLDER)
-    
+
     with open(os.path.join(TEXT_FOLDER, "cameras.txt"), "r") as f:
         angle_x = math.pi / 2
         for line in f:
@@ -305,11 +305,7 @@ if __name__ == "__main__":
     print("[INFO] computing center of attention...")
     totw = 0.0
     totp = np.array([0.0, 0.0, 0.0])
-    tmp_list = []
-    for f in frames:
-        # pdb.set_trace()
-        # print(f["transform_matrix"][0:3,3])
-        tmp_list.append(np.array(f["transform_matrix"][0:3,3]))
+    
     for f in frames:
         mf = f["transform_matrix"][0:3,:]
         for g in frames:
@@ -319,11 +315,6 @@ if __name__ == "__main__":
                 totp += p * weight
                 totw += weight
     totp /= totw
-    tmp_list.append(totp)
-    # import pickle
-    # path = '/scratch_net/biwidl208/yuthan/wisp_data/nerf/d389c316-c71f7a5e/poses.pkl'
-    # with open(path, "wb") as fid:
-    #     pickle.dump(tmp_list, fid)
     # for f in frames:
     #     f["transform_matrix"][0:3,3] -= totp
     avglen = 0.
@@ -331,8 +322,10 @@ if __name__ == "__main__":
         avglen += np.linalg.norm(f["transform_matrix"][0:3,3])
     avglen /= N
     print("[INFO] avg camera distance from origin", avglen)
+    pdb.set_trace()
+    scale_factor = 4.0 / avglen
     for f in frames:
-        f["transform_matrix"][0:3,3] *= 4.0 / avglen # scale to "nerf sized"
+        f["transform_matrix"][0:3,3] *= scale_factor # scale to "nerf sized"
 
     # sort frames by id
     frames.sort(key=lambda d: d['file_path'])

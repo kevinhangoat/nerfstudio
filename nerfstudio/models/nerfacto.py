@@ -48,7 +48,7 @@ from nerfstudio.model_components.renderers import (
 from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.models.base_model import Model, ModelConfig
 from nerfstudio.utils import colormaps
-
+import pdb
 
 @dataclass
 class NerfactoModelConfig(ModelConfig):
@@ -79,6 +79,8 @@ class NerfactoModelConfig(ModelConfig):
     """Arguments for the proposal density fields."""
     interlevel_loss_mult: float = 1.0
     """Proposal loss multiplier."""
+    depth_loss_mult: float = 0.05
+    """Depth loss multiplier."""
     distortion_loss_mult: float = 0.002
     """Distortion loss multiplier."""
     use_proposal_weight_anneal: bool = True
@@ -153,6 +155,7 @@ class NerfactoModel(Model):
 
         # losses
         self.rgb_loss = MSELoss()
+        self.depth_loss = MSELoss()
 
         # metrics
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
@@ -219,7 +222,12 @@ class NerfactoModel(Model):
     def get_loss_dict(self, outputs, batch, metrics_dict=None):
         loss_dict = {}
         image = batch["image"].to(self.device)
+        depth = batch["depth"].to(self.device)
         loss_dict["rgb_loss"] = self.rgb_loss(image, outputs["rgb"])
+        for i, val in enumerate(depth):
+            if val == 0:
+                depth[i] = outputs["depth"][i]
+        loss_dict["depth_loss"] = self.config.depth_loss_mult * self.depth_loss(depth, outputs["depth"])
         loss_dict["interlevel_loss"] = self.config.interlevel_loss_mult * interlevel_loss(
             outputs["weights_list"], outputs["ray_samples_list"]
         )

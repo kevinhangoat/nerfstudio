@@ -61,6 +61,8 @@ def collate_image_dataset_batch(batch: Dict, num_rays_per_batch: int, keep_full_
         semantics_stuff = batch["semantics_stuff"][c, y, x]
     if "semantics_thing" in batch:
         semantics_thing = batch["semantics_thing"][c, y, x]
+    if "depth" in batch:
+        depth = batch["depth"][c, y, x]
     assert image.shape == (num_rays_per_batch, 3), image.shape
 
     # Needed to correct the random indices to their actual camera idx locations.
@@ -77,10 +79,11 @@ def collate_image_dataset_batch(batch: Dict, num_rays_per_batch: int, keep_full_
         collated_batch["semantics_stuff"] = semantics_stuff
     if semantics_thing is not None:
         collated_batch["semantics_thing"] = semantics_thing
+    if depth is not None:
+        collated_batch["depth"] = depth
 
     if keep_full_image:
         collated_batch["full_image"] = batch["image"]
-
     return collated_batch
 
 

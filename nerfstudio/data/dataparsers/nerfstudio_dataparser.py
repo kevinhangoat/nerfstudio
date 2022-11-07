@@ -53,6 +53,22 @@ def get_mask(image_idx: int, masks: torch.Tensor):
     mask = masks[image_idx]
     return {"mask": mask}
 
+def get_depth(image_idx: int, depths: torch.Tensor):
+    """function to process additional semantics and mask information
+
+    Args:
+        image_idx: specific image index to work with
+        semantics: semantics data
+    """
+    # handle mask
+    depth = depths[image_idx]
+    return {"depth": depth}
+
+def path_replace(path_name: Path, old: str, new: str):
+    parent, file_name = path_name.parent, path_name.name
+    new_file_name = file_name.replace(old, new)
+    return Path(parent).joinpath(new_file_name)
+
 @dataclass
 class NerfstudioDataParserConfig(DataParserConfig):
     """Nerfstudio dataset config"""
@@ -73,6 +89,8 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """The percent of images to use for training. The remaining images are for eval."""
     use_transient_mask: bool = False
     """Whether to mask out transient objects"""
+    use_depth_supervised: bool = True
+    """Whether to supervise depth"""
 
 @dataclass
 class Nerfstudio(DataParser):
@@ -89,8 +107,10 @@ class Nerfstudio(DataParser):
         poses = []
         num_skipped_image_filenames = 0
         masks_all = []
+        depths = []
         pan_path = self.config.data / "pan_seg.json"
         pan_seg_dict = create_pan_mask_dict(pan_path)
+        depth_path = self.config.data / "depth_prior"
         image_shape = (int(meta['h']), int(meta['w']))
         for idx, frame in enumerate(meta["frames"]):
             if "\\" in frame["file_path"]:
@@ -103,8 +123,14 @@ class Nerfstudio(DataParser):
             else:
                 image_filenames.append(fname)
                 poses.append(np.array(frame["transform_matrix"]))
+            fname_depth = depth_path / path_replace(filepath, ".jpg", ".png").name
+            # TODO Scaling factor need to be an argument input
+            depth_prior = np.asarray(Image.open(fname_depth), dtype=np.float32) / 100.0 * 0.04368
+            depths.append(torch.from_numpy(depth_prior)[..., None])
+
             frame_mask = get_transient_mask(pan_seg_dict, filepath.name, image_shape)
             masks_all.append(torch.from_numpy(frame_mask)[..., None])
+
         if num_skipped_image_filenames >= 0:
             logging.info("Skipping %s files in dataset split %s.", num_skipped_image_filenames, split)
         assert (
@@ -143,6 +169,9 @@ class Nerfstudio(DataParser):
         poses = poses[indices]
         masks_all = torch.stack(masks_all)
         masks = masks_all[indices]
+        # TODO Scale depth option
+        depths = torch.stack(depths)
+        depths = depths[indices]
         # in x,y,z order
         # assumes that the scene is centered at the origin
         aabb_scale = self.config.scene_scale
@@ -183,6 +212,11 @@ class Nerfstudio(DataParser):
 
         if self.config.use_transient_mask:
             addition_inputs = {"masks": {"func": get_mask, "kwargs": {"masks": masks}}}
+        elif self.config.use_depth_supervised:
+            addition_inputs = {
+                "depths": {"func": get_depth, "kwargs": {"depths": depths}},
+                "masks": {"func": get_mask, "kwargs": {"masks": masks}}
+            }
         else: 
             addition_inputs = {}
 
