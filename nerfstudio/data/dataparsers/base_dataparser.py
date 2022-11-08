@@ -45,6 +45,14 @@ class Semantics:
 
 
 @dataclass
+class Depths:
+    """Dataclass for depth priors."""
+
+    filenames: List[Path]
+    """filenames to load depth data"""
+    
+
+@dataclass
 class DataparserOutputs:
     """Dataparser outputs for the which will be used by the DataManager
     for creating RayBundle and RayGT objects."""

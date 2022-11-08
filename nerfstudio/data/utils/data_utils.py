@@ -43,3 +43,17 @@ def get_semantics_and_mask_tensors_from_path(
     semantics = torch.from_numpy(np.array(pil_image, dtype="int64"))[..., None]
     mask = torch.sum(semantics == mask_indices, dim=-1, keepdim=True) == 0
     return semantics, mask
+
+
+def get_depth_from_path(
+    filepath: Path, depth_scale_factor: float
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Utility function to read depth prior from the given filepath
+    """
+    pil_image = Image.open(filepath)
+    depth_prior = torch.from_numpy(
+        np.asarray(pil_image, dtype=np.float32) * depth_scale_factor
+    )[..., None]
+    
+    return depth_prior

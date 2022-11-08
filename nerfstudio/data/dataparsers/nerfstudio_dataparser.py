@@ -32,6 +32,7 @@ from nerfstudio.data.dataparsers.base_dataparser import (
     DataParser,
     DataParserConfig,
     DataparserOutputs,
+    Depths
 )
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
@@ -62,7 +63,10 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """Whether to automatically scale the poses to fit in +/- 1 bounding box."""
     train_split_percentage: float = 0.9
     """The percent of images to use for training. The remaining images are for eval."""
-
+    include_depths: bool = True
+    """Whether to depth prior for training"""
+    depth_scale_factor: float = 4.368
+    """The scale multiplier between depth prior and output depth"""
 
 @dataclass
 class Nerfstudio(DataParser):
@@ -137,6 +141,21 @@ class Nerfstudio(DataParser):
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
             )
         )
+        
+        # --- Depth ---
+        if self.config.include_depths:
+            depths_path = self.config.data / "depth_priors"
+            assert(depths_path.exists())
+            filenames = [
+                Path(
+                    str(image_filename)
+                    .replace(f"images", f"depth_priors")
+                    .replace(".jpg", ".png")
+                )
+                for image_filename in image_filenames
+            ]
+            
+            depths = Depths(filenames=filenames)
 
         if "camera_model" in meta:
             camera_type = CAMERA_MODEL_TO_TYPE[meta["camera_model"]]
@@ -171,6 +190,7 @@ class Nerfstudio(DataParser):
             image_filenames=image_filenames,
             cameras=cameras,
             scene_box=scene_box,
+            metadata={"depths": depths} if self.config.include_depths else {},
         )
         return dataparser_outputs
 

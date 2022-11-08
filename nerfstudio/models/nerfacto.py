@@ -85,6 +85,8 @@ class NerfactoModelConfig(ModelConfig):
     """Proposal loss multiplier."""
     distortion_loss_mult: float = 0.002
     """Distortion loss multiplier."""
+    depth_loss_mult: float = 0.01
+    """Depth loss multiplier."""
     use_proposal_weight_anneal: bool = True
     """Whether to use proposal weight annealing."""
     use_average_appearance_embedding: bool = True
@@ -165,6 +167,7 @@ class NerfactoModel(Model):
 
         # losses
         self.rgb_loss = MSELoss()
+        self.depth_loss = MSELoss()
 
         # metrics
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
@@ -243,6 +246,11 @@ class NerfactoModel(Model):
         loss_dict = {}
         image = batch["image"].to(self.device)
         loss_dict["rgb_loss"] = self.rgb_loss(image, outputs["rgb"])
+        if "depth" in batch.keys():
+            for i, val in enumerate(depth):
+                if val == 0:
+                    depth[i] = outputs["depth"][i]
+            loss_dict["depth_loss"] = self.config.depth_loss_mult * self.depth_loss(depth, outputs["depth"])
         if self.training:
             loss_dict["interlevel_loss"] = self.config.interlevel_loss_mult * interlevel_loss(
                 outputs["weights_list"], outputs["ray_samples_list"]
