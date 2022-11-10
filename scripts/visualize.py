@@ -9,7 +9,7 @@ import pdb
 import pickle 
 from nerfstudio.utils.misc import create_pan_mask_dict, get_transient_mask
 from pathlib import Path
-
+from PIL import Image
 
 def plot_depth(
     depth_map: np.ndarray,
@@ -39,6 +39,8 @@ if __name__ == "__main__":
     # pan_path = Path("/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/11201_48/pan_seg.json")
     # pan_seg_dict = create_pan_mask_dict(pan_path)
     # pdb.set_trace()
-    batch = torch.load("pair.pt")
+    fname_depth = "/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/renders/d389c316-c71f7a5e/test_depth_clean_correct/depth_0.png"
+    depth_prior = np.array(Image.open(fname_depth), dtype=np.float32) / 100.0
+    # batch = torch.load("pair.pt")
     pdb.set_trace()
     # mask = plot_depth(masks[0].to_numpy())

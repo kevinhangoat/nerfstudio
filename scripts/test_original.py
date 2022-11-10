@@ -46,7 +46,7 @@ logging.basicConfig(format="[%(filename)s:%(lineno)d] %(message)s", level=loggin
 
 def _render_rgb(
     pipeline: Pipeline,
-    cameras: Cameras,
+    data,
     output_directory: Path,
     rendered_resolution_scaling_factor: float = 1.0,
 ) -> None:
@@ -54,20 +54,21 @@ def _render_rgb(
 
     Args:
         pipeline: Pipeline to evaluate with.
-        cameras: Cameras to render.
+        data: Cameras to render.
         output_directory: Name of the output file.
         rendered_resolution_scaling_factor: Scaling factor to apply to the camera image resolution.
     """
-    images = []
+    cameras = data.cameras
     cameras.rescale_output_resolution(rendered_resolution_scaling_factor)
-    
+    image_filenames = data.image_filenames
     for camera_idx in range(cameras.size):
         camera_ray_bundle = cameras.generate_rays(camera_indices=camera_idx).to(pipeline.device)
         with torch.no_grad():
             outputs = pipeline.model.get_outputs_for_camera_ray_bundle(camera_ray_bundle)
         rgb = outputs["rgb"].cpu().numpy() * 255
         rgb = Image.fromarray(rgb.astype(np.uint8))
-        rgb.save(f"{output_directory}/rgb_{camera_idx}.jpeg")
+        filename = str(image_filenames[camera_idx].name)[:-4]
+        rgb.save(f"{output_directory}/rgb_{filename}.jpeg")
         
         depth = np.squeeze((outputs["depth"].cpu().numpy() * 100)).astype(np.uint16)
         min_depth, max_depth = np.percentile(
@@ -77,7 +78,7 @@ def _render_rgb(
         depth[depth > max_depth] = max_depth
         plot_depth(
             depth,
-            f"{output_directory}/vis_depth_{camera_idx}.png",
+            f"{output_directory}/vis_depth_{filename}.png",
             camera_idx,
             False,
         )
@@ -154,6 +155,6 @@ if __name__ == "__main__":
     )
     _render_rgb(
         pipeline,
-        pipeline.datamanager.train_dataset.dataparser_outputs.cameras,
+        pipeline.datamanager.train_dataset.dataparser_outputs,
         output_directory,
     )
