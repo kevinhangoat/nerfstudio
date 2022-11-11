@@ -15,7 +15,7 @@
 """
 Collection of Losses.
 """
-
+import pdb
 import torch
 from torch import nn
 from torchtyping import TensorType
@@ -170,3 +170,8 @@ def nerfstudio_distortion_loss(
     loss = loss + 1 / 3.0 * torch.sum(weights**2 * (ends - starts), dim=-2)
 
     return loss
+
+def depth_mse_loss(prior: torch.Tensor, prediction: torch.Tensor) -> torch.Tensor:
+    """MSE Error between two tensors, skipping pixels with zero depth prior"""
+    depth_loss = nn.MSELoss()
+    return depth_loss(prior[prior != 0], prediction[prior != 0])

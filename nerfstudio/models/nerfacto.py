@@ -39,7 +39,7 @@ from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.field_components.spatial_distortions import SceneContraction
 from nerfstudio.fields.density_fields import HashMLPDensityField
 from nerfstudio.fields.nerfacto_field import TCNNNerfactoField
-from nerfstudio.model_components.losses import MSELoss, distortion_loss, interlevel_loss
+from nerfstudio.model_components.losses import MSELoss, distortion_loss, interlevel_loss, depth_mse_loss
 from nerfstudio.model_components.ray_samplers import ProposalNetworkSampler
 from nerfstudio.model_components.renderers import (
     AccumulationRenderer,
@@ -49,7 +49,7 @@ from nerfstudio.model_components.renderers import (
 from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.models.base_model import Model, ModelConfig
 from nerfstudio.utils import colormaps
-
+import pdb
 
 @dataclass
 class NerfactoModelConfig(ModelConfig):
@@ -85,7 +85,7 @@ class NerfactoModelConfig(ModelConfig):
     """Proposal loss multiplier."""
     distortion_loss_mult: float = 0.002
     """Distortion loss multiplier."""
-    depth_loss_mult: float = 0.01
+    depth_loss_mult: float = 2.0
     """Depth loss multiplier."""
     use_proposal_weight_anneal: bool = True
     """Whether to use proposal weight annealing."""
@@ -167,7 +167,6 @@ class NerfactoModel(Model):
 
         # losses
         self.rgb_loss = MSELoss()
-        self.depth_loss = MSELoss()
 
         # metrics
         self.psnr = PeakSignalNoiseRatio(data_range=1.0)
@@ -247,16 +246,14 @@ class NerfactoModel(Model):
         image = batch["image"].to(self.device)
         loss_dict["rgb_loss"] = self.rgb_loss(image, outputs["rgb"])
         if "depth" in batch.keys():
-            for i, val in enumerate(depth):
-                if val == 0:
-                    depth[i] = outputs["depth"][i]
-            loss_dict["depth_loss"] = self.config.depth_loss_mult * self.depth_loss(depth, outputs["depth"])
+            loss_dict["depth_loss"] = self.config.depth_loss_mult * depth_mse_loss(batch["depth"], outputs["depth"])
         if self.training:
             loss_dict["interlevel_loss"] = self.config.interlevel_loss_mult * interlevel_loss(
                 outputs["weights_list"], outputs["ray_samples_list"]
             )
             assert metrics_dict is not None and "distortion" in metrics_dict
             loss_dict["distortion_loss"] = self.config.distortion_loss_mult * metrics_dict["distortion"]
+        pdb.set_trace()
         return loss_dict
 
     def get_image_metrics_and_images(

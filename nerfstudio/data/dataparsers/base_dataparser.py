@@ -50,6 +50,8 @@ class Depths:
 
     filenames: List[Path]
     """filenames to load depth data"""
+    depth_scale_factor: float
+    """The scale multiplier between depth prior and output depth"""
     
 
 @dataclass

@@ -34,7 +34,7 @@ class DepthDataset(InputDataset):
             dataparser_outputs.metadata["depths"], Depths
         )
         self.depths = dataparser_outputs.metadata["depths"]
-        self.depth_scale_factor = dataparser_outputs.depth_scale_factor
+        self.depth_scale_factor = dataparser_outputs.metadata["depths"].depth_scale_factor
 
     def get_metadata(self, data: Dict) -> Dict:
         # handle mask
