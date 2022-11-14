@@ -244,16 +244,17 @@ class NerfactoModel(Model):
     def get_loss_dict(self, outputs, batch, metrics_dict=None):
         loss_dict = {}
         image = batch["image"].to(self.device)
+        depth = batch["depth"].to(self.device)
         loss_dict["rgb_loss"] = self.rgb_loss(image, outputs["rgb"])
         if "depth" in batch.keys():
-            loss_dict["depth_loss"] = self.config.depth_loss_mult * depth_mse_loss(batch["depth"], outputs["depth"])
+            loss_dict["depth_loss"] = self.config.depth_loss_mult * depth_mse_loss(depth, outputs["depth"])
         if self.training:
             loss_dict["interlevel_loss"] = self.config.interlevel_loss_mult * interlevel_loss(
                 outputs["weights_list"], outputs["ray_samples_list"]
             )
             assert metrics_dict is not None and "distortion" in metrics_dict
             loss_dict["distortion_loss"] = self.config.distortion_loss_mult * metrics_dict["distortion"]
-        pdb.set_trace()
+        # pdb.set_trace()
         return loss_dict
 
     def get_image_metrics_and_images(

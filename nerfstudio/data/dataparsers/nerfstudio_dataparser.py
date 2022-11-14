@@ -142,7 +142,7 @@ class Nerfstudio(DataParser):
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
             )
         )
-        
+
         # --- Depth ---
         if self.config.include_depths:
             depths_path = self.config.data / "depth_priors"

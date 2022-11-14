@@ -186,7 +186,7 @@ method_configs["tensorf"] = Config(
 )
 
 method_configs["nerfacto-depth"] = Config(
-    method_name="nerfacto",
+    method_name="nerfacto-depth",
     trainer=TrainerConfig(
         steps_per_eval_batch=500, steps_per_save=2000, max_num_iterations=30000, mixed_precision=True
     ),
@@ -199,7 +199,7 @@ method_configs["nerfacto-depth"] = Config(
                 mode="SO3xR3", optimizer=AdamOptimizerConfig(lr=6e-4, eps=1e-8, weight_decay=1e-2)
             ),
         ),
-        model=NerfactoModelConfig(eval_num_rays_per_chunk=1 << 15, depth_loss_mult=5.0),
+        model=NerfactoModelConfig(eval_num_rays_per_chunk=1 << 15, depth_loss_mult=1000.0),
     ),
     optimizers={
         "proposal_networks": {
