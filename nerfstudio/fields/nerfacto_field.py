@@ -46,7 +46,7 @@ from nerfstudio.field_components.spatial_distortions import (
     SpatialDistortion,
 )
 from nerfstudio.fields.base_field import Field
-
+import pdb
 try:
     import tinycudann as tcnn
 except ImportError:
@@ -273,7 +273,7 @@ class TCNNNerfactoField(Field):
         )
         rgb = self.mlp_head(h).view(*ray_samples.frustums.directions.shape[:-1], -1).to(directions)
         outputs.update({FieldHeadNames.RGB: rgb})
-
+        # pdb.set_trace()
         return outputs
 
 
@@ -365,6 +365,7 @@ class TorchNerfactoField(Field):
                 )
             )
             outputs[field_head.field_head_name] = field_head(mlp_out)
+        pdb.set_trace()
         return outputs
 
 

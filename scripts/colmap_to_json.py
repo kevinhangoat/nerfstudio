@@ -50,8 +50,6 @@ def colmap_to_json(cameras_path: Path, images_path: Path, output_dir: Path, came
     frames = []
     for _, im_data in images.items():
         index_int = int(im_data.name.split(".")[0][-4:])
-        if index_int < 607:
-            continue
         rotation = colmap_utils.qvec2rotmat(im_data.qvec)
         translation = im_data.tvec.reshape(3, 1)
         w2c = np.concatenate([rotation, translation], 1)
@@ -109,7 +107,7 @@ def colmap_to_json(cameras_path: Path, images_path: Path, output_dir: Path, came
     return len(frames)
 
 def main():
-    output_dir = Path("/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/KITTI-360")
+    output_dir = Path("/srv/beegfs02/scratch/bdd100k/data/sfm/nerfstudio/data/e55efa65-7314c32b")
     colmap_dir = output_dir
     camera_type = "other"
     camera_model = CAMERA_MODELS[camera_type]

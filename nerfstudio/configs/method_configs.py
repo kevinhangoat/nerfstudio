@@ -199,7 +199,7 @@ method_configs["nerfacto-depth"] = Config(
                 mode="SO3xR3", optimizer=AdamOptimizerConfig(lr=6e-4, eps=1e-8, weight_decay=1e-2)
             ),
         ),
-        model=NerfactoModelConfig(eval_num_rays_per_chunk=1 << 15, depth_loss_mult=1000.0),
+        model=NerfactoModelConfig(eval_num_rays_per_chunk=1 << 15, depth_loss_mult=0.3),
     ),
     optimizers={
         "proposal_networks": {

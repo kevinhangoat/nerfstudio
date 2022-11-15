@@ -36,7 +36,7 @@ from nerfstudio.data.dataparsers.base_dataparser import (
 )
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
-
+import pdb
 CONSOLE = Console(width=120)
 MAX_AUTO_RESOLUTION = 1600
 
@@ -63,9 +63,9 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """Whether to automatically scale the poses to fit in +/- 1 bounding box."""
     train_split_percentage: float = 0.9
     """The percent of images to use for training. The remaining images are for eval."""
-    include_depths: bool = True
+    include_depths: bool = False
     """Whether to depth prior for training"""
-    depth_scale_factor: float = 0.01
+    depth_scale_factor: float = 1/100
     """The scale multiplier between depth prior and output depth"""
 
 @dataclass
