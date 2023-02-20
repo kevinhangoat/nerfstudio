@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-
+import pdb
 
 def get_image_mask_tensor_from_path(filepath: Path, scale_factor: float = 1.0) -> torch.Tensor:
     """

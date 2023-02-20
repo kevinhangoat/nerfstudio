@@ -40,6 +40,7 @@ from nerfstudio.data.dataparsers.blender_dataparser import BlenderDataParserConf
 from nerfstudio.data.dataparsers.dnerf_dataparser import DNeRFDataParserConfig
 from nerfstudio.data.dataparsers.dycheck_dataparser import DycheckDataParserConfig
 from nerfstudio.data.dataparsers.friends_dataparser import FriendsDataParserConfig
+from nerfstudio.data.dataparsers.semantic_dataparser import SemanticDataParserConfig
 from nerfstudio.data.dataparsers.instant_ngp_dataparser import (
     InstantNGPDataParserConfig,
 )
@@ -70,6 +71,7 @@ AnnotatedDataParserUnion = tyro.conf.OmitSubcommandPrefixes[  # Omit prefixes of
             "minimal-parser": MinimalDataParserConfig(),
             "blender-data": BlenderDataParserConfig(),
             "friends-data": FriendsDataParserConfig(),
+            "semantic-data": SemanticDataParserConfig(),
             "instant-ngp-data": InstantNGPDataParserConfig(),
             "nuscenes-data": NuScenesDataParserConfig(),
             "dnerf-data": DNeRFDataParserConfig(),

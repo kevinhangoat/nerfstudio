@@ -23,6 +23,7 @@ BLACKLIST = [
     "nerfacto",
     "phototourism",
     "depth-nerfacto",
+    "semantic-nerfacto",
     "nerfplayer-ngp",
     "nerfplayer-nerfacto",
 ]

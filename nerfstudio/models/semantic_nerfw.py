@@ -52,7 +52,7 @@ from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.models.base_model import Model
 from nerfstudio.models.nerfacto import NerfactoModelConfig
 from nerfstudio.utils import colormaps
-
+import pdb
 
 @dataclass
 class SemanticNerfWModelConfig(NerfactoModelConfig):
@@ -61,7 +61,8 @@ class SemanticNerfWModelConfig(NerfactoModelConfig):
     _target: Type = field(default_factory=lambda: SemanticNerfWModel)
     use_transient_embedding: bool = False
     """Whether to use transient embedding."""
-
+    semantics_loss_mult: float = 1e-3
+    """Lambda of the depth loss."""
 
 class SemanticNerfWModel(Model):
     """Nerfacto model
@@ -243,7 +244,7 @@ class SemanticNerfWModel(Model):
             loss_dict["rgb_loss"] = self.rgb_loss(image, outputs["rgb"])
 
         # semantic loss
-        loss_dict["semantics_loss"] = self.cross_entropy_loss(outputs["semantics"], batch["semantics"][..., 0].long())
+        loss_dict["semantics_loss"] = self.semantics_loss_mult * self.cross_entropy_loss(outputs["semantics"], batch["semantics"][..., 0].long())
         return loss_dict
 
     def get_image_metrics_and_images(
