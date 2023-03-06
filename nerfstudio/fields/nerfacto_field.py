@@ -132,6 +132,7 @@ class TCNNNerfactoField(Field):
         self.use_semantics = use_semantics
         self.use_pred_normals = use_pred_normals
         self.pass_semantic_gradients = pass_semantic_gradients
+        self.density_embedding = None
 
         base_res: int = 16
         features_per_level: int = 2
@@ -251,7 +252,7 @@ class TCNNNerfactoField(Field):
         h = self.mlp_base(positions_flat).view(*ray_samples.frustums.shape, -1)
         density_before_activation, base_mlp_out = torch.split(h, [1, self.geo_feat_dim], dim=-1)
         self._density_before_activation = density_before_activation
-
+        self.density_embedding = base_mlp_out
         # Rectifying the density with an exponential is much more stable than a ReLU or
         # softplus, because it enables high post-activation (float32) density outputs
         # from smaller internal (float16) parameters.

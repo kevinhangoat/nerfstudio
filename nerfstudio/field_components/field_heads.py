@@ -88,6 +88,9 @@ class FieldHead(FieldComponent):
         out_tensor = self.net(in_tensor)
         if self.activation:
             out_tensor = self.activation(out_tensor)
+        if torch.any(torch.isinf(out_tensor)):
+            import pdb
+            pdb.set_trace()
         return out_tensor
 
 

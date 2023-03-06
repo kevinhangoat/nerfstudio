@@ -55,6 +55,7 @@ from nerfstudio.data.dataparsers.phototourism_dataparser import (
 from nerfstudio.data.dataparsers.scannet_dataparser import ScanNetDataParserConfig
 from nerfstudio.data.dataparsers.sdfstudio_dataparser import SDFStudioDataParserConfig
 from nerfstudio.data.dataparsers.sitcoms3d_dataparser import Sitcoms3DDataParserConfig
+from nerfstudio.data.dataparsers.semantic_dataparser import SemanticDataParserConfig
 from nerfstudio.data.datasets.base_dataset import InputDataset
 from nerfstudio.data.pixel_samplers import (
     EquirectangularPixelSampler,
@@ -88,6 +89,7 @@ AnnotatedDataParserUnion = tyro.conf.OmitSubcommandPrefixes[  # Omit prefixes of
             "scannet-data": ScanNetDataParserConfig(),
             "sdfstudio-data": SDFStudioDataParserConfig(),
             "sitcoms3d-data": Sitcoms3DDataParserConfig(),
+            "semantic-data": SemanticDataParserConfig(),
         },
         prefix_names=False,  # Omit prefixes in subcommands themselves.
     )

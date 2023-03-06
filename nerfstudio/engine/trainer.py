@@ -74,7 +74,7 @@ class TrainerConfig(ExperimentConfig):
     """Maximum number of iterations to run."""
     mixed_precision: bool = False
     """Whether or not to use mixed precision for training."""
-    save_only_latest_checkpoint: bool = True
+    save_only_latest_checkpoint: bool = False
     """Whether to only save the latest checkpoint or all checkpoints."""
     # optional parameters if we want to resume training
     load_dir: Optional[Path] = None

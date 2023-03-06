@@ -39,6 +39,7 @@ from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.field_components.spatial_distortions import SceneContraction
 from nerfstudio.fields.density_fields import HashMLPDensityField
 from nerfstudio.fields.nerfacto_field import TCNNNerfactoField
+from nerfstudio.fields.semantic_field import SemanticField
 from nerfstudio.model_components.losses import MSELoss, distortion_loss, interlevel_loss
 from nerfstudio.model_components.ray_samplers import ProposalNetworkSampler
 from nerfstudio.model_components.renderers import (
@@ -52,7 +53,7 @@ from nerfstudio.model_components.scene_colliders import NearFarCollider
 from nerfstudio.models.base_model import Model
 from nerfstudio.models.nerfacto import NerfactoModelConfig
 from nerfstudio.utils import colormaps
-
+import pdb
 
 @dataclass
 class SemanticNerfWModelConfig(NerfactoModelConfig):
@@ -61,8 +62,8 @@ class SemanticNerfWModelConfig(NerfactoModelConfig):
     _target: Type = field(default_factory=lambda: SemanticNerfWModel)
     use_transient_embedding: bool = False
     """Whether to use transient embedding."""
-    semantic_loss_weight: float = 1.0
-    pass_semantic_gradients: bool = False
+    semantic_loss_weight: float = 1e-3
+    pass_semantic_gradients: bool = True
 
 
 class SemanticNerfWModel(Model):
@@ -99,7 +100,12 @@ class SemanticNerfWModel(Model):
             num_images=self.num_train_data,
             use_average_appearance_embedding=self.config.use_average_appearance_embedding,
             use_transient_embedding=self.config.use_transient_embedding,
-            use_semantics=True,
+            use_semantics=False,
+            num_semantic_classes=len(self.semantics.classes),
+            pass_semantic_gradients=self.config.pass_semantic_gradients,
+        )
+
+        self.semantic_networks = SemanticField(
             num_semantic_classes=len(self.semantics.classes),
             pass_semantic_gradients=self.config.pass_semantic_gradients,
         )
@@ -147,6 +153,7 @@ class SemanticNerfWModel(Model):
         param_groups = {}
         param_groups["proposal_networks"] = list(self.proposal_networks.parameters())
         param_groups["fields"] = list(self.field.parameters())
+        param_groups["semantic_networks"] = list(self.semantic_networks.parameters())
         return param_groups
 
     def get_training_callbacks(
@@ -193,6 +200,8 @@ class SemanticNerfWModel(Model):
         weights_list.append(weights_static)
         ray_samples_list.append(ray_samples)
 
+        semantic_outputs = self.semantic_networks(ray_samples, self.field.density_embedding)
+
         depth = self.renderer_depth(weights=weights_static, ray_samples=ray_samples)
         accumulation = self.renderer_accumulation(weights=weights_static)
 
@@ -215,7 +224,7 @@ class SemanticNerfWModel(Model):
         if not self.config.pass_semantic_gradients:
             semantic_weights = semantic_weights.detach()
         outputs["semantics"] = self.renderer_semantics(
-            field_outputs[FieldHeadNames.SEMANTICS], weights=semantic_weights
+            semantic_outputs[FieldHeadNames.SEMANTICS], weights=semantic_weights
         )
 
         # semantics colormaps

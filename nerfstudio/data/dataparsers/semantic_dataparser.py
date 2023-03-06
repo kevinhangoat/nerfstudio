@@ -32,19 +32,20 @@ from nerfstudio.data.dataparsers.base_dataparser import (
     DataParser,
     DataParserConfig,
     DataparserOutputs,
+    Semantics
 )
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
-
+import pdb
 CONSOLE = Console(width=120)
 MAX_AUTO_RESOLUTION = 1600
 
 
 @dataclass
-class NerfstudioDataParserConfig(DataParserConfig):
-    """Nerfstudio dataset config"""
+class SemanticDataParserConfig(DataParserConfig):
+    """Semantic dataset config"""
 
-    _target: Type = field(default_factory=lambda: Nerfstudio)
+    _target: Type = field(default_factory=lambda: Semantic)
     """target class to instantiate"""
     data: Path = Path("data/nerfstudio/poster")
     """Directory or explicit json file path specifying location of data."""
@@ -60,17 +61,19 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """Whether to center the poses."""
     auto_scale_poses: bool = True
     """Whether to automatically scale the poses to fit in +/- 1 bounding box."""
-    train_split_fraction: float = 0.9
-    """The fraction of images to use for training. The remaining images are for eval."""
+    train_split_percentage: float = 0.9
+    """The percent of images to use for training. The remaining images are for eval."""
     depth_unit_scale_factor: float = 0.00390625
     """Scales the depth values to meters. Default value is 0.001 for a millimeter to meter conversion."""
+    include_semantics: bool = True
+    """whether or not to include loading of semantics data"""
 
 
 @dataclass
-class Nerfstudio(DataParser):
-    """Nerfstudio DatasetParser"""
+class Semantic(DataParser):
+    """Semantic DatasetParser"""
 
-    config: NerfstudioDataParserConfig
+    config: SemanticDataParserConfig
     downscale_factor: Optional[int] = None
 
     def _generate_dataparser_outputs(self, split="train"):
@@ -86,6 +89,7 @@ class Nerfstudio(DataParser):
         image_filenames = []
         mask_filenames = []
         depth_filenames = []
+        semantics_filenames = []
         poses = []
         num_skipped_image_filenames = 0
 
@@ -161,6 +165,11 @@ class Nerfstudio(DataParser):
                 depth_fname = self._get_fname(depth_filepath, data_dir, downsample_folder_prefix="depths_")
                 depth_filenames.append(depth_fname)
 
+            if "semantics_file_path" in frame:
+                semantics_filepath = PurePath(frame["semantics_file_path"])
+                semantics_fname = self._get_fname(semantics_filepath, data_dir, downsample_folder_prefix="semantics_")
+                semantics_filenames.append(semantics_fname)
+
         if num_skipped_image_filenames >= 0:
             CONSOLE.log(f"Skipping {num_skipped_image_filenames} files in dataset split {split}.")
         assert (
@@ -184,7 +193,7 @@ class Nerfstudio(DataParser):
 
         # filter image_filenames and poses based on train/eval split percentage
         num_images = len(image_filenames)
-        num_train_images = math.ceil(num_images * self.config.train_split_fraction)
+        num_train_images = math.ceil(num_images * self.config.train_split_percentage)
         num_eval_images = num_images - num_train_images
         i_all = np.arange(num_images)
         i_train = np.linspace(
@@ -224,6 +233,7 @@ class Nerfstudio(DataParser):
         image_filenames = [image_filenames[i] for i in indices]
         mask_filenames = [mask_filenames[i] for i in indices] if len(mask_filenames) > 0 else []
         depth_filenames = [depth_filenames[i] for i in indices] if len(depth_filenames) > 0 else []
+        semantics_filenames = [semantics_filenames[i] for i in indices] if len(semantics_filenames) > 0 else []
         poses = poses[indices]
 
         # in x,y,z order
@@ -274,6 +284,20 @@ class Nerfstudio(DataParser):
         assert self.downscale_factor is not None
         cameras.rescale_output_resolution(scaling_factor=1.0 / self.downscale_factor)
 
+        # --- semantics ---
+        semantics = None
+        if self.config.include_semantics:
+            panoptic_classes = load_from_json(Path(meta["panoptic_classes"]))
+            classes = panoptic_classes["semantics"]
+            colors = torch.tensor(panoptic_classes["semantics_colors"], dtype=torch.float32) / 255.0
+            semantics = Semantics(
+                filenames=semantics_filenames, 
+                classes=classes, 
+                colors=colors, 
+                mask_classes=["ego vehicle"])
+            
+            # pdb.set_trace()
+
         dataparser_outputs = DataparserOutputs(
             image_filenames=image_filenames,
             cameras=cameras,
@@ -284,6 +308,7 @@ class Nerfstudio(DataParser):
             metadata={
                 "depth_filenames": depth_filenames if len(depth_filenames) > 0 else None,
                 "depth_unit_scale_factor": self.config.depth_unit_scale_factor,
+                "semantics": semantics if self.config.include_semantics else None,
             },
         )
         return dataparser_outputs
