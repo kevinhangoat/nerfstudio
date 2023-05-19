@@ -20,7 +20,9 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
-
+import open3d as o3d
+from sklearn.neighbors import KDTree
+import pdb
 
 def get_image_mask_tensor_from_path(filepath: Path, scale_factor: float = 1.0) -> torch.Tensor:
     """
@@ -81,6 +83,68 @@ def get_depth_image_from_path(
         image = cv2.resize(image, (width, height), interpolation=interpolation)
     else:
         image = cv2.imread(str(filepath.absolute()), cv2.IMREAD_ANYDEPTH)
+        if "image" not in locals() or image is None:
+            image = np.zeros((height, width))
+        else:
+            image = image.astype(np.float64) * scale_factor
+            image = cv2.resize(image, (width, height), interpolation=interpolation)
+    return torch.from_numpy(image[:, :, np.newaxis])
+
+def get_points3d_from_depth_batch(
+    depth_img,
+    camera_params,
+    extrinsics_mat,
+):
+
+    if filepath.suffix == ".npy":
+        image = np.load(filepath) * scale_factor
+        image = cv2.resize(image, (width, height), interpolation=interpolation)
+    else:
+        image = cv2.imread(str(filepath.absolute()), cv2.IMREAD_ANYDEPTH)
         image = image.astype(np.float64) * scale_factor
         image = cv2.resize(image, (width, height), interpolation=interpolation)
     return torch.from_numpy(image[:, :, np.newaxis])
+
+def depth_to_pcd(
+    depth_img,
+    camera_params,
+    extrinsics_mat,
+):
+    """Map from 2D depth map to 3D point cloud."""
+    f = camera_params[0]
+    cx = camera_params[2]
+    cy = camera_params[3]
+    width = depth_img.shape[1]
+    height = depth_img.shape[0]
+    xw = np.tile(list(range(width)), (height, 1)) - cx
+    yw = np.tile(list(range(height)), (width, 1)).T - cy
+    point_x = (xw * depth_img).reshape(width * height) / f
+    point_y = (yw * depth_img).reshape(width * height) / f
+    point_z = depth_img.reshape(width * height)
+    point = np.stack((point_x, point_y, point_z))
+    point = point[:, ~np.all(point == 0, axis=0)]
+    point = np.vstack((point, np.ones(point.shape[1])))
+    pcd_array = np.array(np.matmul(np.linalg.inv(extrinsics_mat), point))
+    return pcd_array
+
+
+def fit_plane(pcd_array, prior_plane_model=[]):
+    """Use ransac to fit the points of floor/ground to a plane.
+
+    This is used to avoid noise in depth map for the ground.
+    """
+    pcd_array = np.delete(pcd_array, 3, 0)
+    pcd_array = pcd_array.T
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(pcd_array)
+    if len(pcd_array) < 10:
+        # If there are less than 10 pixels of ground
+        # remove all of them since ransac cannot work well
+        return prior_plane_model
+    plane_model, _ = pcd.segment_plane(
+        distance_threshold=1, 
+        ransac_n=3, 
+        num_iterations=1000,
+    )
+
+    return plane_model

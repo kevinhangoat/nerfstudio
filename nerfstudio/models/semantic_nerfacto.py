@@ -24,15 +24,17 @@ from typing import Dict, Tuple, Type
 import torch
 
 from nerfstudio.cameras.rays import RayBundle
-from nerfstudio.model_components.losses import DepthLossType, depth_loss
+from nerfstudio.model_components.losses import DepthLossType, depth_loss, plane_ransac_loss
 from nerfstudio.models.nerfacto import NerfactoModel, NerfactoModelConfig
 from nerfstudio.utils import colormaps
-from nerfstudio.model_components.renderers import SemanticRenderer, UncertaintyRenderer
+from nerfstudio.model_components.renderers import SemanticRenderer, UncertaintyRenderer, DepthRenderer
 from nerfstudio.data.dataparsers.base_dataparser import Semantics
 from nerfstudio.fields.nerfacto_field import TCNNNerfactoField
 from nerfstudio.fields.semantic_field import SemanticField
 from nerfstudio.field_components.field_heads import FieldHeadNames
 from nerfstudio.field_components.spatial_distortions import SceneContraction
+from nerfstudio.model_components.losses import MSELoss, HuberLoss, L1Loss
+from nerfstudio.data.utils.data_utils import depth_to_pcd, fit_plane
 import pdb
 
 @dataclass
@@ -40,7 +42,7 @@ class SemanticNerfactoModelConfig(NerfactoModelConfig):
     """Additional parameters for depth supervision."""
 
     _target: Type = field(default_factory=lambda: SemanticNerfactoModel)
-    depth_loss_mult: float = 1e-3
+    depth_loss_mult: float = 6e-3
     """Lambda of the depth loss."""
     is_euclidean_depth: bool = False
     """Whether input depth maps are Euclidean distances (or z-distances)."""
@@ -60,7 +62,8 @@ class SemanticNerfactoModelConfig(NerfactoModelConfig):
     """Lambda of the depth loss."""
     pass_semantic_gradients: bool = True
     """Use semantic gradients or not."""
-
+    plane_loss_mult: float = 0
+    """Lambda of the plane loss."""
 
 class SemanticNerfactoModel(NerfactoModel):
     """Depth and Semantic loss augmented nerfacto model.
@@ -110,9 +113,11 @@ class SemanticNerfactoModel(NerfactoModel):
         # renderers
         self.renderer_uncertainty = UncertaintyRenderer()
         self.renderer_semantics = SemanticRenderer()
+        self.renderer_expected_depth = DepthRenderer(method="expected")
 
         # losses
         self.cross_entropy_loss = torch.nn.CrossEntropyLoss(reduction="mean")
+        self.plane_loss = L1Loss()
 
     def get_outputs(self, ray_bundle: RayBundle):
         
@@ -138,9 +143,10 @@ class SemanticNerfactoModel(NerfactoModel):
         semantic_outputs = self.semantic_networks(ray_samples, self.field.density_embedding)
         
         depth = self.renderer_depth(weights=weights_static, ray_samples=ray_samples)
+        depth_expected = self.renderer_expected_depth(weights=weights_static, ray_samples=ray_samples)
         accumulation = self.renderer_accumulation(weights=weights_static)
 
-        outputs = {"rgb": rgb, "accumulation": accumulation, "depth": depth}
+        outputs = {"rgb": rgb, "accumulation": accumulation, "depth": depth, "depth_expected": depth_expected}
         outputs["weights_list"] = weights_list
         outputs["ray_samples_list"] = ray_samples_list
 
@@ -210,6 +216,41 @@ class SemanticNerfactoModel(NerfactoModel):
         loss_dict["semantics_loss"] = self.config.semantic_loss_weight * self.cross_entropy_loss(
             outputs["semantics"], batch["semantics"][..., 0].long()
         )
+
+        """
+        # ransac ground loss using big model
+        semantic_labels = torch.argmax(torch.nn.functional.softmax(outputs["semantics"], dim=-1), dim=-1)
+
+        X_ = torch.unsqueeze(batch["to_X"], 1) * outputs["depth_expected"]
+        Y_ = torch.unsqueeze(batch["to_Y"], 1) * outputs["depth_expected"]
+        ones_ = torch.ones(X_.shape, device=X_.device)
+        points3D = torch.cat((X_, Y_, outputs["depth_expected"], ones_), dim=1)
+        # points3D = torch.cat((X_, Y_, outputs["depth"], ones_), dim=1)
+        points3D_world = torch.matmul(batch["cam_to_world_image"].to(points3D.device), points3D.unsqueeze(-1))
+        
+        # ground_mask = (batch["semantics"]==7).squeeze()
+        ground_mask = torch.logical_or((batch["semantics"]==7).squeeze(), (semantic_labels==7).squeeze())
+        plane_error = torch.matmul(batch["ground_ransac_model"], points3D_world).squeeze()
+        # Penalize by Y_
+        # plane_error = (plane_error * torch.exp(2*batch["to_Y"]))[ground_mask]
+        
+        # no_depth_mask = (batch["depth_image"].to(self.device) == 0).squeeze()
+        # plane_error = torch.matmul(batch["ground_ransac_model"], points3D_world).squeeze()[torch.logical_and(ground_mask, no_depth_mask)]
+
+        if len(plane_error) == 0:
+            plane_error = torch.cat((plane_error, torch.zeros((1), device=plane_error.device)), dim=0)
+        # plane_error_thres = torch.median(torch.abs(plane_error))
+        # plane_error = plane_error[plane_error > 0.001]
+        plane_error_target = torch.zeros_like(plane_error)
+        loss_dict["plane_loss"] = self.config.plane_loss_mult * self.plane_loss(plane_error, plane_error_target)
+
+        # no_plane_error = torch.matmul(batch["ground_ransac_model"], points3D_world).squeeze()[ground_mask==False]
+        # no_plane_error_target = torch.zeros_like(no_plane_error)
+        # no_plane_loss = self.plane_loss(no_plane_error, no_plane_error_target)
+        # print(self.plane_loss(plane_error, plane_error_target), "  ", no_plane_loss)
+        # if float(plane_error[0]) < 0.0001:
+        #     pdb.set_trace()
+        """
         return loss_dict
 
     def get_image_metrics_and_images(

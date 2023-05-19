@@ -483,5 +483,15 @@ def auto_orient_and_center_poses(
         transform[:3, 3] = -translation
         transform = transform[:3, :]
         oriented_poses = transform @ poses
+    import pdb
+    # pdb.set_trace()
 
+    # R_inv = np.linalg.inv(transform[:3, :3])
+    # t_inv = np.matmul(R_inv, -transform[:3, 3])
+    # transform_inv = np.hstack((R_inv, np.expand_dims(t_inv, axis=-1)))
+    # transform_inv = torch.from_numpy(transform_inv)
+    # add_row = torch.zeros(1, 4)
+    # add_row[0, 3] = 1
+    # oriented_poses_filled = torch.cat((oriented_poses, add_row.expand(oriented_poses.shape[0], -1, -1)), dim=1)
+    # pdb.set_trace()    
     return oriented_poses, transform

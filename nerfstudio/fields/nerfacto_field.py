@@ -53,7 +53,7 @@ try:
 except ImportError:
     # tinycudann module doesn't exist
     pass
-
+import pdb
 
 def get_normalized_directions(directions: TensorType["bs":..., 3]) -> TensorType["bs":..., 3]:
     """SH encoding must be in the range [0, 1]
@@ -282,6 +282,7 @@ class TCNNNerfactoField(Field):
                 embedded_appearance = torch.ones(
                     (*directions.shape[:-1], self.appearance_embedding_dim), device=directions.device
                 ) * self.embedding_appearance.mean(dim=0)
+                # pdb.set_trace()
             else:
                 embedded_appearance = torch.zeros(
                     (*directions.shape[:-1], self.appearance_embedding_dim), device=directions.device

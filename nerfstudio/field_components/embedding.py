@@ -45,6 +45,14 @@ class Embedding(FieldComponent):
         """Return the mean of the embedding weights along a dim."""
         return self.embedding.weight.mean(dim)
 
+    def max(self, dim=0):
+        """Return the mean of the embedding weights along a dim."""
+        return self.embedding.weight.max(dim)
+
+    def min(self, dim=0):
+        """Return the mean of the embedding weights along a dim."""
+        return self.embedding.weight.min(dim)
+
     def forward(self, in_tensor: TensorType[..., "input_dim"]) -> TensorType[..., "output_dim"]:
         """Call forward
 

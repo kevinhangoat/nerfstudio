@@ -36,7 +36,9 @@ from nerfstudio.data.dataparsers.base_dataparser import (
 )
 from nerfstudio.data.scene_box import SceneBox
 from nerfstudio.utils.io import load_from_json
+from nerfstudio.data.utils.data_utils import depth_to_pcd, fit_plane
 import pdb
+import cv2
 CONSOLE = Console(width=120)
 MAX_AUTO_RESOLUTION = 1600
 
@@ -67,6 +69,11 @@ class SemanticDataParserConfig(DataParserConfig):
     """Scales the depth values to meters. Default value is 0.001 for a millimeter to meter conversion."""
     include_semantics: bool = True
     """whether or not to include loading of semantics data"""
+    include_ransac_floor: bool = True
+    """whether or not to ransac fit floor pixels"""
+    ground_ransac_model = []
+    """A ground model"""
+    final_scale: float = 1.0
 
 
 @dataclass
@@ -228,7 +235,7 @@ class Semantic(DataParser):
         scale_factor *= self.config.scale_factor
 
         poses[:, :3, 3] *= scale_factor
-
+        self.config.final_scale = scale_factor
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
         image_filenames = [image_filenames[i] for i in indices]
         mask_filenames = [mask_filenames[i] for i in indices] if len(mask_filenames) > 0 else []
@@ -294,9 +301,35 @@ class Semantic(DataParser):
                 filenames=semantics_filenames, 
                 classes=classes, 
                 colors=colors, 
-                mask_classes=["ego vehicle"])
+                mask_classes=["ego vehicle", "unlabeled"])
             
             # pdb.set_trace()
+
+        # Use RANSAC to fit the ground to a plane
+        if self.config.include_ransac_floor:
+            camera_params = [fx, fy, cx, cy]
+            poses_dict = {}
+            for sem_idx, semantics_filename in enumerate(semantics_filenames):
+                poses_dict[semantics_filename] = poses[sem_idx]
+            # extrinsics_mat = poses[:, :3, :4]
+            points = np.array([])
+            for idx, pose in enumerate(poses):
+                semantic_pil_image = Image.open(semantics_filenames[idx])
+                depth_image = cv2.imread(str(depth_filenames[idx]), cv2.IMREAD_ANYDEPTH)
+                if "depth_image" not in locals():
+                    continue
+                if depth_image is None:
+                    continue
+                cur_semantics = torch.from_numpy(np.array(semantic_pil_image, dtype="int64"))[..., None]
+                depth = depth_image.astype(np.float64) * self.config.depth_unit_scale_factor * scale_factor
+                
+                # ground_depth = torch.from_numpy(depth) * torch.logical_or((cur_semantics.squeeze() == 3), (cur_semantics.squeeze() == 7))
+                ground_depth = torch.from_numpy(depth) * (cur_semantics.squeeze() == 7)
+                if len(points) == 0:
+                    points = depth_to_pcd(ground_depth.numpy(), camera_params, np.vstack((pose, [0,0,0,1])))
+                else:
+                    points = np.hstack((points, depth_to_pcd(ground_depth.numpy(), camera_params, np.vstack((pose, [0,0,0,1])))))
+            self.config.ground_ransac_model = fit_plane(points, self.config.ground_ransac_model)
 
         dataparser_outputs = DataparserOutputs(
             image_filenames=image_filenames,
@@ -309,6 +342,8 @@ class Semantic(DataParser):
                 "depth_filenames": depth_filenames if len(depth_filenames) > 0 else None,
                 "depth_unit_scale_factor": self.config.depth_unit_scale_factor,
                 "semantics": semantics if self.config.include_semantics else None,
+                "poses": poses_dict if self.config.include_ransac_floor else None,
+                "ground_ransac_model": self.config.include_ransac_floor
             },
         )
         return dataparser_outputs

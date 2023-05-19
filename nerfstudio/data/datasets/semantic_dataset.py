@@ -19,11 +19,11 @@ Semantic dataset.
 from typing import Dict
 
 import torch
-
+import numpy as np
 from nerfstudio.data.dataparsers.base_dataparser import DataparserOutputs, Semantics
 from nerfstudio.data.datasets.base_dataset import InputDataset
 from nerfstudio.data.utils.data_utils import get_semantics_and_mask_tensors_from_path, get_depth_image_from_path
-
+import pdb
 
 class SemanticDataset(InputDataset):
     """Dataset that returns images and semantics and masks.
@@ -58,11 +58,33 @@ class SemanticDataset(InputDataset):
 
         height = int(self._dataparser_outputs.cameras.height[data["image_idx"]])
         width = int(self._dataparser_outputs.cameras.width[data["image_idx"]])
-
+        cx = float(self._dataparser_outputs.cameras.cx[data["image_idx"]])
+        cy = float(self._dataparser_outputs.cameras.cy[data["image_idx"]])
+        fx = float(self._dataparser_outputs.cameras.fx[data["image_idx"]])
+        fy = float(self._dataparser_outputs.cameras.fy[data["image_idx"]])
         # Scale depth images to meter units and also by scaling applied to cameras
         scale_factor = self.depth_unit_scale_factor * self._dataparser_outputs.dataparser_scale
         depth_image = get_depth_image_from_path(
-            filepath=filepath, height=height, width=width, scale_factor=scale_factor
+            filepath=self.depth_filenames[data["image_idx"]], height=height, width=width, scale_factor=scale_factor
         )
-
+        
         return {"mask": mask, "semantics": semantic_label, "depth_image": depth_image}
+
+        """
+        cur_pose = np.vstack((self._dataparser_outputs.metadata["poses"][filepath], [0,0,0,1]))
+        cam_to_world = np.linalg.inv(cur_pose)   
+        cam_to_world_image = torch.tile(torch.from_numpy(cam_to_world), (depth_image.shape[0],depth_image.shape[1], 1, 1))
+        
+        ground_ransac_model = self._dataparser_outputs.metadata["ground_ransac_model"]
+        ground_ransac_model_image = torch.tile(torch.from_numpy(ground_ransac_model),(depth_image.shape[0],depth_image.shape[1], 1, 1))
+        
+        
+        to_X = (np.tile(list(range(width)), (height, 1)) - cx ) / fx
+        to_Y = (np.tile(list(range(height)), (width, 1)).T - cy) / fy
+
+        return {"mask": mask, "semantics": semantic_label, "depth_image": depth_image, 
+            "cam_to_world_image": cam_to_world_image,
+            "to_X": to_X,
+            "to_Y": to_Y,
+            "ground_ransac_model": ground_ransac_model_image}
+        """

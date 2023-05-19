@@ -57,14 +57,15 @@ class ExportPointCloud(Exporter):
     """Name of the RGB output."""
     use_bounding_box: bool = True
     """Only query points within the bounding box"""
-    bounding_box_min: Tuple[float, float, float] = (-1, -1, -1)
+    bounding_box_min: Tuple[float, float, float] = (-2.5, -2.5, -2.5)
     """Minimum of the bounding box, used if use_bounding_box is True."""
-    bounding_box_max: Tuple[float, float, float] = (1, 1, 1)
+    bounding_box_max: Tuple[float, float, float] = (2.5, 2.5, 2.5)
     """Maximum of the bounding box, used if use_bounding_box is True."""
     num_rays_per_batch: int = 32768
     """Number of rays to evaluate per batch. Decrease if you run out of memory."""
     std_ratio: float = 10.0
     """Threshold based on STD of the average distances across the point cloud to remove outliers."""
+    use_semantic_color: bool = False
 
     def main(self) -> None:
         """Export point cloud."""
@@ -89,12 +90,17 @@ class ExportPointCloud(Exporter):
             bounding_box_min=self.bounding_box_min,
             bounding_box_max=self.bounding_box_max,
             std_ratio=self.std_ratio,
+            use_semantic_color=self.use_semantic_color
         )
         torch.cuda.empty_cache()
 
         CONSOLE.print(f"[bold green]:white_check_mark: Generated {pcd}")
         CONSOLE.print("Saving Point Cloud...")
-        o3d.io.write_point_cloud(str(self.output_dir / "point_cloud.ply"), pcd)
+        if self.use_semantic_color:
+            pcd_name = "point_cloud_semantic.ply"
+        else:
+            pcd_name = "point_cloud.ply"
+        o3d.io.write_point_cloud(str(self.output_dir / pcd_name), pcd)
         print("\033[A\033[A")
         CONSOLE.print("[bold green]:white_check_mark: Saving Point Cloud")
 

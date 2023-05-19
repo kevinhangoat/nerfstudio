@@ -64,6 +64,7 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """The fraction of images to use for training. The remaining images are for eval."""
     depth_unit_scale_factor: float = 0.00390625
     """Scales the depth values to meters. Default value is 0.001 for a millimeter to meter conversion."""
+    final_scale: float = 1.0
 
 
 @dataclass
@@ -219,7 +220,7 @@ class Nerfstudio(DataParser):
         scale_factor *= self.config.scale_factor
 
         poses[:, :3, 3] *= scale_factor
-
+        self.config.final_scale = scale_factor
         # Choose image_filenames and poses based on split, but after auto orient and scaling the poses.
         image_filenames = [image_filenames[i] for i in indices]
         mask_filenames = [mask_filenames[i] for i in indices] if len(mask_filenames) > 0 else []

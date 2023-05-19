@@ -95,6 +95,7 @@ def generate_point_cloud(
     bounding_box_min: Tuple[float, float, float] = (-1.0, -1.0, -1.0),
     bounding_box_max: Tuple[float, float, float] = (1.0, 1.0, 1.0),
     std_ratio: float = 10.0,
+    use_semantic_color: bool = True 
 ) -> o3d.geometry.PointCloud:
     """Generate a point cloud from a nerf.
 
@@ -126,6 +127,10 @@ def generate_point_cloud(
     points = []
     rgbs = []
     normals = []
+    transform = pipeline.datamanager.train_dataparser_outputs.dataparser_transform
+    R_inv = torch.inverse(transform[:3, :3])
+    t_inv = torch.matmul(R_inv, -transform[:3, 3])
+    transform_inv = torch.cat((R_inv, t_inv.view(3, 1)), dim=1)
     with progress as progress_bar:
         task = progress_bar.add_task("Generating Point Cloud", total=num_points)
         while not progress_bar.finished:
@@ -142,7 +147,10 @@ def generate_point_cloud(
                 CONSOLE.print(f"Could not find {depth_output_name} in the model outputs", justify="center")
                 CONSOLE.print(f"Please set --depth_output_name to one of: {outputs.keys()}", justify="center")
                 sys.exit(1)
-            rgb = outputs[rgb_output_name]
+            if use_semantic_color:
+                rgb = outputs["semantics_colormap"]
+            else:
+                rgb = outputs[rgb_output_name]
             depth = outputs[depth_output_name]
             if normal_output_name is not None:
                 if normal_output_name not in outputs:
@@ -164,12 +172,23 @@ def generate_point_cloud(
                     comp_l < comp_m
                 ), f"Bounding box min {bounding_box_min} must be smaller than max {bounding_box_max}"
                 mask = torch.all(torch.concat([point > comp_l, point < comp_m], dim=-1), dim=-1)
+                if "semantics" in outputs:
+                    semantic_labels = torch.argmax(torch.nn.functional.softmax(outputs["semantics"], dim=-1), dim=-1)
+                    mask = torch.logical_and((semantic_labels != 30), mask)
                 point = point[mask]
                 rgb = rgb[mask]
                 if normal_output_name is not None:
                     normal = normal[mask]
-
-            points.append(point)
+            import pdb
+            point /= pipeline.config.datamanager.dataparser.final_scale
+            homogeneous_point = torch.unsqueeze(torch.from_numpy(np.hstack((point.cpu(), np.ones((len(point), 1))))), 2)
+            
+            transformed_point = (transform_inv.type(torch.float64) @ homogeneous_point).squeeze()
+        
+            # convert back to x
+            transformed_point[:, 2:] *= -1
+            transformed_point[:, :2] = transformed_point[:, :2][:, [1, 0]]
+            points.append(transformed_point)
             rgbs.append(rgb)
             if normal_output_name is not None:
                 normals.append(normal)
@@ -179,7 +198,10 @@ def generate_point_cloud(
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points.float().cpu().numpy())
-    pcd.colors = o3d.utility.Vector3dVector(rgbs.float().cpu().numpy())
+    if use_semantic_color:
+        pcd.colors = o3d.utility.Vector3dVector(rgbs.float().cpu().numpy())
+    else:
+        pcd.colors = o3d.utility.Vector3dVector(rgbs.float().cpu().numpy())
 
     ind = None
     if remove_outliers:

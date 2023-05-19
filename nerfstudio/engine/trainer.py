@@ -238,7 +238,7 @@ class Trainer:
                     writer.put_dict(name="Train Loss Dict", scalar_dict=loss_dict, step=step)
                     writer.put_dict(name="Train Metrics Dict", scalar_dict=metrics_dict, step=step)
 
-                self.eval_iteration(step)
+                # self.eval_iteration(step)
 
                 if step_check(step, self.config.steps_per_save):
                     self.save_checkpoint(step)

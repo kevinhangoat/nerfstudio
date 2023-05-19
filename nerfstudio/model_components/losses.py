@@ -24,9 +24,10 @@ from typing_extensions import Literal
 
 from nerfstudio.cameras.rays import RaySamples
 from nerfstudio.utils.math import masked_reduction
-
+import pdb
 L1Loss = nn.L1Loss
 MSELoss = nn.MSELoss
+HuberLoss = nn.HuberLoss
 
 LOSSES = {"L1": L1Loss, "MSE": MSELoss}
 
@@ -328,6 +329,53 @@ def monosdf_normal_loss(
     l1 = torch.abs(normal_pred - normal_gt).sum(dim=-1).mean()
     cos = (1.0 - torch.sum(normal_pred * normal_gt, dim=-1)).mean()
     return l1 + cos
+
+
+def plane_ransac_loss(
+    weights: TensorType[..., "num_samples", 1],
+    ray_samples: RaySamples,
+    plane_model: TensorType[..., 1],
+    ground_mask: TensorType[..., 1],
+) -> TensorType[0]:
+    """Implementation of depth losses.
+
+    Args:
+        weights: Weights predicted for each sample.
+        ray_samples: Samples along rays corresponding to weights.
+        termination_depth: Ground truth depth of rays.
+        predicted_depth: Depth prediction from the network.
+        sigma: Uncertainty around depth value.
+        directions_norm: Norms of ray direction vectors in the camera frame.
+        is_euclidean: Whether ground truth depths corresponds to normalized direction vectors.
+        depth_loss_type: Type of depth loss to apply.
+
+    Returns:
+        plane loss scalar.
+    """
+    steps = (ray_samples.frustums.starts + ray_samples.frustums.ends) / 2
+    cumulative_weights = torch.cumsum(weights[..., 0], dim=-1)  # [..., num_samples]
+    split = torch.ones((*weights.shape[:-2], 1), device=weights.device) * 0.5  # [..., 1]
+    median_index = torch.searchsorted(cumulative_weights, split, side="left")  # [..., 1]
+    median_index = torch.clamp(median_index, 0, steps.shape[-2] - 1)  # [..., 1]
+    # median_depth = torch.gather(steps[..., 0], dim=-1, index=median_index)  # [..., 1]
+    
+    positions = torch.gather(
+        ray_samples.frustums.get_positions(), 
+        dim=1, index=median_index.unsqueeze(-1).expand(-1,-1,3))
+    column_ones = torch.ones((positions.shape[0], positions.shape[1], 1), device=positions.device)
+    positions = torch.cat((positions, column_ones), dim=2)
+    positions = positions.permute(0, 2, 1).to(torch.float64)
+
+    plane_error = torch.matmul(plane_model, positions)[ground_mask]
+    plane_error_target = torch.zeros_like(plane_error)
+    loss_fn = nn.MSELoss()
+    
+
+    no_plane_error = torch.matmul(plane_model, positions)[ground_mask==False]
+    no_plane_error_target = torch.zeros_like(no_plane_error)
+    
+    print("ground: ", loss_fn(plane_error, plane_error_target), " None Ground: ", loss_fn(no_plane_error, no_plane_error_target))
+    return loss_fn(plane_error, plane_error_target)
 
 
 class MiDaSMSELoss(nn.Module):
